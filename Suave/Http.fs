@@ -2,11 +2,7 @@
 
 module Http =
 
-  open Types
-
-  type WebResult = Async<unit> option
-
-  type WebPart = HttpContext -> WebResult
+  open ReqResp
 
   let inline succeed x = Some x
 
@@ -330,20 +326,25 @@ module Http =
     open System
     open System.IO
 
+    let internal write_protocol connection status_code write_suave = async {
+      do! async_writeln connection (String.concat " " [ "HTTP/1.1"
+                                                        ; (http_code status_code).ToString()
+                                                        ; http_reason status_code ])
+      if write_suave then do! async_writeln connection Internals.server_header else ()
+      do! async_writeln connection (String.Concat( [|  "Date: "; Globals.utc_now().ToString("R") |]))
+      }
+
+    let internal
+
     let response_f (status_code : HttpCode)
                    (f_content : HttpRequest -> Async<unit>)
                    ({request = request; runtime = runtime; connection = connection } as context : HttpContext)
                    = async {
       try
-        //let connection:Connection = runtime.connection
-        do! async_writeln connection (String.concat " " [ "HTTP/1.1"
-                                                        ; (http_code status_code).ToString()
-                                                        ; http_reason status_code ])
-        do! async_writeln connection Internals.server_header
-        do! async_writeln connection (String.Concat( [|  "Date: "; Globals.utc_now().ToString("R") |]))
+        do! write_protocol connection status_code true
 
         for (x,y) in request.response.Headers do
-          if not (List.exists (fun y -> x.ToLower().Equals(y)) ["server";"date";"content-length"]) then
+          if not (List.exists (fun y -> x.ToLower().Equals(y)) ["server";"date"]) then
             do! async_writeln connection (String.Concat [| x; ": "; y |])
 
         if not(request.response.Headers.Exists(new Predicate<_>(fun (x,_) -> x.ToLower().Equals("content-type")))) then
@@ -361,9 +362,9 @@ module Http =
                  ({request = request; runtime = runtime; connection = connection } as context : HttpContext) =
       response_f status_code (
         fun r -> async {
-
           let! (content : byte []) = Compression.transform cnt context
 
+          let response = request.response
           // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.13
           do! async_writeln connection (String.Concat [|  "Content-Length: "; content.Length.ToString() |])
 
@@ -373,6 +374,9 @@ module Http =
             do! connection.write (new ArraySegment<_>(content, 0, content.Length))
         })
         context
+
+    let variable_response status_code f context =
+
 
   module Writers =
 
