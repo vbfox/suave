@@ -1,7 +1,27 @@
+/// A module for all the request specific and runtime-specific
+/// data
 module Suave.ReqResp
 
 open System
 open System.IO
+
+open OpenSSL.X509 // TODO: remove hard binding to OpenSSL
+
+/// Gets the supported protocols, HTTP and HTTPS with a certificate
+type Protocol =
+  /// The HTTP protocol is the core protocol
+  | HTTP
+  /// The HTTP protocol tunneled in a TLS tunnel
+  | HTTPS of X509Certificate
+with
+  override x.ToString() =
+    match x with
+    | HTTP    -> "http"
+    | HTTPS _ -> "https"
+  member x.is_secure =
+    match x with
+    | HTTP    -> false
+    | HTTPS _ -> true
 
 /// HTTP cookie
 type HttpCookie =
@@ -16,20 +36,14 @@ type HttpCookie =
 
 /// A file's mime type and if compression is enabled or not
 type MimeType =
-  { name        : string
-  ; compression : bool }
-
-type MimeTypesMap = string -> MimeType option
-
-/// A holder for headers for the http response
-type HttpResponse =
-  { headers : Map<string, string> }
+  { name        : string // TODO: split into its segments to allow conneg
+  ; compression : bool } // TODO: have by the side, not in the mime type
 
 /// A holder for uploaded file meta-data
 type HttpUpload =
   { field_name : string
   ; file_name  : string
-  ; mime_type  : string
+  ; mime_type  : MimeType
   ; path       : string }
 
 type HttpVersion =
@@ -47,39 +61,30 @@ type HttpVersion =
 /// A holder for the data extracted from the request.
 type ReqData =
   { http_version : HttpVersion
-  ; url          : string
-  ; ``method``   : string
-  ; query        : Map<string,string>
-  ; headers      : Map<string,string>
-  ; form         : Map<string,string>
-  ; raw_form     : byte []
-  ; raw_query    : string
-  ; cookies      : Map<string, (string*string)[]>
-  ; user_name    : string
-  ; password     : string
-  ; session_id   : string
-  ; response     : HttpResponse
-  ; files        : HttpUpload list
-  ; trace        : Log.TraceHeader
-  ; is_secure    : bool }
+    url          : string
+    ``method``   : string
+    query        : Map<string,string>
+    headers      : Map<string,string>
+    form         : Map<string,string>
+    raw_form     : byte []
+    raw_query    : string
+    cookies      : Map<string, (string*string)[]>
+    user_name    : string // TODO: move to separate record
+    password     : string // TODO: move to separate record
+    session_id   : string
+    resp_headers : Map<string, string>
+    files        : HttpUpload list
+    trace        : Log.TraceHeader
+    protocol     : Protocol }
+
+/// An error handler takes the exception, a programmer-provided message, a request (that failed) and returns
+/// an asynchronous workflow for the handling of the error.
+type ErrorHandler = exn -> String -> ReqData -> Async<unit>
 
 type HttpContext =
   { request    : ReqData
   ; runtime    : HttpRuntime
   ; connection : Connection }
-
-type HttpRuntime =
-  { protocol           : Protocol
-  ; web_part_timeout   : TimeSpan
-  ; error_handler      : ErrorHandler
-  ; mime_types_map     : MimeTypesMap
-  ; home_directory     : string
-  ; compression_folder : string
-  ; logger             : Log.Logger }
-
-/// An error handler takes the exception, a programmer-provided message, a request (that failed) and returns
-/// an asynchronous workflow for the handling of the error.
-type ErrorHandler = Exception -> String -> HttpContext -> Async<unit>
 
 type WebResult = Async<unit> option
 

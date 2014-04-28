@@ -53,17 +53,16 @@
     <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Native.fs" />
     <Compile Include="Async.fs" />
     <Compile Include="Log.fs" />
     <Compile Include="ReqResp.fs" />
     <Compile Include="Config.fs" />
     <Compile Include="Utils.fs" />
+    <Compile Include="Sscanf.fs" />
     <Compile Include="Globals.fs" />
     <Compile Include="Socket.fs" />
     <Compile Include="Tcp.fs" />
-    <Compile Include="Sscanf.fs" />
-    <Compile Include="Native.fs" />
-    <Compile Include="OpenSSL.fs" />
     <Compile Include="Http.fsi" />
     <Compile Include="Http.fs" />
     <Compile Include="Web.fs" />

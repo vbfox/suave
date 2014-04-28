@@ -24,7 +24,7 @@ let mutable utc_now = fun () -> System.DateTimeOffset.UtcNow
 /// From the TCP module, keeps track of the number of clients
 let internal number_of_clients = ref 0L
 
-
+// TODO: use configuration to curry a dictionary to a lookup function instead of this
 // TODO: provide proper session storage
 open System.Collections.Concurrent
 
