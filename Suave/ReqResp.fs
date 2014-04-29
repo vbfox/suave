@@ -26,13 +26,13 @@ with
 /// HTTP cookie
 type HttpCookie =
   { name      : string
-  ; value     : string
-  ; expires   : DateTimeOffset option
-  ; path      : string option
-  ; domain    : string option
-  ; secure    : bool
-  ; http_only : bool
-  ; version   : string option }
+    value     : string
+    expires   : DateTimeOffset option
+    path      : string option
+    domain    : string option
+    secure    : bool
+    http_only : bool
+    version   : string option }
 
 /// A file's mime type and if compression is enabled or not
 type MimeType =
@@ -42,9 +42,9 @@ type MimeType =
 /// A holder for uploaded file meta-data
 type HttpUpload =
   { field_name : string
-  ; file_name  : string
-  ; mime_type  : MimeType
-  ; path       : string }
+    file_name  : string
+    mime_type  : MimeType
+    path       : string }
 
 type HttpVersion =
   | V1_1
@@ -59,14 +59,13 @@ type HttpVersion =
 // TODO: go through all properties and see how well they fit
 
 /// A holder for the data extracted from the request.
-type ReqData =
+type ReqResp =
   { http_version : HttpVersion
     url          : string
     ``method``   : string
     query        : Map<string,string>
     headers      : Map<string,string>
     form         : Map<string,string>
-    raw_form     : byte []
     raw_query    : string
     cookies      : Map<string, (string*string)[]>
     user_name    : string // TODO: move to separate record
@@ -75,20 +74,29 @@ type ReqData =
     resp_headers : Map<string, string>
     files        : HttpUpload list
     trace        : Log.TraceHeader
-    protocol     : Protocol }
+    protocol     : Protocol
+    /// The raw request body as a byte array
+    raw_body     : Lazy<byte []> }
+
+type UserContext = Map<string, string>
 
 /// An error handler takes the exception, a programmer-provided message, a request (that failed) and returns
 /// an asynchronous workflow for the handling of the error.
-type ErrorHandler = exn -> String -> ReqData -> Async<unit>
+type ErrorHandler = exn -> String -> ReqResp -> Async<unit>
 
-type HttpContext =
-  { request    : ReqData
-  ; runtime    : HttpRuntime
-  ; connection : Connection }
+type HttpContext = ReqResp * UserContext
 
-type WebResult = Async<unit> option
+//  { request    : ReqData
+//  ; runtime    : HttpRuntime
+//  ; connection : Connection }
 
-type WebPart = HttpContext -> WebResult
+type Applicative = HttpContext -> HttpContext option
+
+/// A web part is a thing that executes on a HttpRequest, asynchronously, maybe executing
+/// on the request.
+///
+/// Note: WebResult = Async<unit> option
+type WebPart = HttpContext -> Async<unit> option
 
 /// An exception, raised e.g. if writing to the stream fails
 exception internal InternalFailure of string

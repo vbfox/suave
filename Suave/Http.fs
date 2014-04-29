@@ -330,8 +330,6 @@ module Http =
       do! async_writeln connection (String.Concat( [|  "Date: "; Globals.utc_now().ToString("R") |]))
       }
 
-    let internal
-
     let response_f (status_code : HttpCode)
                    (f_content : HttpRequest -> Async<unit>)
                    ({request = request; runtime = runtime; connection = connection } as context : HttpContext)

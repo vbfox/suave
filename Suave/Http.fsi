@@ -4,7 +4,6 @@
 /// The HTTP module has these main sub-modules:
 /// </para>
 /// <list>
-///   <item>Codes - simply hosts the HttpCode type.</item>
 ///   <item>Internals - constants and version of suave library.</item>
 ///   <item>Compression - Functions for compressing responses.</item>
 ///   <item>Response - response and response_f functions.</item>
@@ -20,24 +19,13 @@
 /// </list>
 /// <para>and these main types:</para>
 /// <list>
-///   <item>WebResult = Async&lt;unit&gt; option</item>
-///   <item>WebPart = HttpContext -&gt; WebResult</item>
+///   <item>WebPart = HttpContext -&gt; Async&lt;unit&gt; option</item>
 ///   <item>HttpMethod</item>
 /// </list>
 /// </summary>
 module Http =
 
-  open Types
-
-  /// A web result is something that writes to the output stream that the client
-  /// as to the web server.
-  type WebResult = Async<unit> option
-
-  /// A web part is a thing that executes on a HttpRequest, asynchronously, maybe executing
-  /// on the request.
-  ///
-  /// Note: WebResult = Async<unit> option
-  type WebPart = HttpContext -> WebResult
+  open ReqResp
 
   /// Return success with some value
   val inline succeed : item:'a -> 'a option
@@ -1412,12 +1400,8 @@ module Http =
 
     /// <summary><para>
     /// Serve a 'file browser' for a directory
-    /// </para><para>
-    /// </para><para>
     /// </para></summary>
-    /// <remarks>
-    /// </remarks>
-    val dir : req:HttpContext -> WebResult
+    val dir : WebPart
 
   module Embedded =
 
