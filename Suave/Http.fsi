@@ -103,7 +103,12 @@ module Http =
     | TRACE
     | OPTIONS
 
-  module Codes =
+  // module Internals elided
+  // module Internals Compression
+
+  /// general response functions
+  module Response =
+
     type HttpCode =
       | HTTP_100 | HTTP_101
       | HTTP_200 | HTTP_201 | HTTP_202 | HTTP_203 | HTTP_204 | HTTP_205 | HTTP_206
@@ -119,14 +124,6 @@ module Http =
     val http_reason : code:HttpCode -> string
 
     val http_message : code:HttpCode -> string
-
-  // module Internals elided
-  // module Internals Compression
-
-  open Codes
-
-  /// general response functions
-  module Response =
 
     /// Respond with a given status code, http message, content in the body to a http request.
     val response_f : status_code:HttpCode -> f_content:(HttpRequest -> Async<unit>) -> request:HttpContext -> Async<unit>
