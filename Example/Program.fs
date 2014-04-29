@@ -40,6 +40,7 @@ let testapp : WebPart =
     log logger log_format >>= never
     url_scan "/add/%d/%d"   (fun (a,b) -> OK((a + b).ToString()))
     url_scan "/minus/%d/%d" (fun (a,b) -> OK((a - b).ToString()))
+    url_scan "/divide/%d/%d" (fun (a,b) -> OK((a / b).ToString()))
     RequestErrors.NOT_FOUND "Found no handlers"
   ]
 
@@ -51,7 +52,7 @@ let timeout r =
   } |> succeed
 
 // Adds a new mime type to the default map
-let mime_types () =
+let mime_types =
   Writers.default_mime_types_map
     >=> (function | ".avi" -> Writers.mk_mime_type "video/avi" false | _ -> None)
 
@@ -98,7 +99,7 @@ choose [
       ; ct               = Async.DefaultCancellationToken
       ; buffer_size      = 2048
       ; max_ops          = 100
-      ; mime_types_map   = mime_types ()
+      ; mime_types_map   = mime_types
       ; home_folder      = None
       ; compressed_files_folder = None
       ; logger           = logger }

@@ -1089,16 +1089,16 @@ module Http =
   module Applicatives =
 
     /// Match on the url
-    val url : s:string -> x:HttpContext -> HttpContext option
+    val url : s:string -> Applicative
 
     /// Match on the method
-    val ``method`` : ``method``:HttpMethod -> x:HttpContext -> HttpContext option
+    val ``method`` : ``method``:HttpMethod -> Applicative
 
     /// Match on the protocol
-    val is_secure : x:HttpContext -> HttpContext option
+    val is_secure : Applicative
 
     /// Applies the regex to the url and matches on the result
-    val url_regex : s:string -> x:HttpContext -> HttpContext option
+    val url_regex : s:string -> Applicative
 
     /// <summary><para>
     /// Formats the HttpRequest as in the default manner
@@ -1108,7 +1108,7 @@ module Http =
     /// <summary><para>
     /// Log the HttpRequest to the given logger.
     /// </para></summary>
-    val log : Log.Logger -> (HttpContext -> string) -> ctx:HttpContext -> HttpContext option
+    val log : Log.Logger -> (HttpContext -> string) -> Applicative
 
     /// <summary><para>
     /// Strongly typed route matching! Matching the uri can be used with the 'parsers'
