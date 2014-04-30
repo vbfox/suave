@@ -27,53 +27,6 @@ module Http =
 
   open ReqResp
 
-  /// Return success with some value
-  val inline succeed : item:'a -> 'a option
-
-  /// Return failure without any value
-  val fail : 'a option
-
-  /// Return failure with a value that is ignored
-  val inline never : x:'a -> 'b option
-
-  /// bind f inp evaluates to match inp with None -> None | Some x -> f x
-  /// The same as Option.bind.
-  val bind : (('a -> 'b option) -> 'a option -> 'b option)
-
-  /// Delay the computation of f
-  val inline delay : f:(unit -> 'a) -> 'a
-
-  /// Compose (bind) two arguments, 'a' and 'b', so that the result of
-  /// the composition can be applied to an argument of 'a' and then passed
-  /// to 'b', if 'a' yields a value.
-  val inline (>>=) : first:('a -> 'b option) -> second:('b -> 'c option) -> input:'a -> 'c option
-
-  /// Left-to-right Kleisli composition of monads.
-  val inline (>=>) : first:('a -> 'b option) -> second:('a -> 'b option) -> input:'a -> 'b option
-
-  /// Entry-point for composing the applicative routes of the http application,
-  /// by iterating the options, applying the context, arg, to the predicate
-  /// from the list of options, until there's a match/a Some(x) which can be
-  /// run.
-  val choose : options:('a -> 'b option) list -> input:'a -> 'b option
-
-  /// Pipe the request through to a bird that can peck at it.
-  val inline warbler : f:('a -> 'a -> 'b) -> 'a -> 'b
-
-  /// Compose an applicative value with a 'warble' function and then returns
-  /// a new function that is the composition of 'app' and 'warble'.
-  val inline (>>==) : app:('a -> 'b option) -> warble:('b -> 'b -> 'c option) -> ('a -> 'c option)
-
-  /// The constant function, which returns its constant, no matter
-  /// its input.
-  /// - theorem: identity = (cnst |> warbler)
-  /// (warbler cnst) x = cnst x x = fun _ -> x
-  val inline cnst : x:'a -> 'b -> 'a
-
-  /// The conditional function that applies f x a if there's a value in d,
-  /// or otherwise, applies g a, if there is no value in d.
-  val cond : item:'a option -> f:('a -> 'b -> 'c) -> g:('b -> 'c) -> 'b -> 'c
-
   /// <summary>
   /// <para>These are the known HTTP methods.</para><para>
   /// If you are getting compile-errors
@@ -92,7 +45,7 @@ module Http =
     | OPTIONS
 
   // module Internals elided
-  // module Internals Compression
+  // module Compression elided
 
   /// general response functions
   module Response =
@@ -124,10 +77,10 @@ module Http =
   module Writers =
 
     /// Sets a header with the key and value specified
-    val set_header : key:string -> value:string -> ctx:HttpContext -> HttpContext
+    val set_header : key:string -> value:string -> Writer
 
     /// Sets a cookie with the passed value in the 'cookie' parameter
-    val set_cookie : cookie:HttpCookie -> (HttpContext -> HttpContext)
+    val set_cookie : cookie:HttpCookie -> Writer
 
     /// <summary>
     /// Creates a MIME type record
@@ -150,19 +103,19 @@ module Http =
     /// </para></summary>
     /// <remarks>
     /// </remarks>
-    val set_mime_type : mime_type:string ->  (HttpContext -> HttpContext)
-
+    val set_mime_type : mime_type:string -> Writer
 
   // http://www.web-cache.com/Writings/http-status-codes.html
 
   /// Intermediate responses - SUAVE TODO
-  /// Functions have signature f :: TODO
+  /// Functions have signature <code>f :: HttpContext -&gt; Async&lt;unit&gt; option</code>, or simply
+  /// <code>WebPart</code>
   module Intermediate =
     /// TODO
-    val CONTINUE : x:HttpContext -> HttpContext option
+    val CONTINUE : WebPart
 
     /// TODO
-    val SWITCHING_PROTO : x:HttpContext -> HttpContext option
+    val SWITCHING_PROTO : WebPart
 
   /// <summary><para>
   /// 2xx successful responses
@@ -1062,6 +1015,7 @@ module Http =
 
     /// An upstream server that suave communicated with did not respond in a timely fashion
     val bad_gateway : arr:byte [] -> WebPart
+
     /// An upstream server that suave communicated with did not respond in a timely fashion
     val BAD_GATEWAY : message:string -> WebPart
 
@@ -1100,6 +1054,8 @@ module Http =
     /// Applies the regex to the url and matches on the result
     val url_regex : s:string -> Applicative
 
+    // TODO: consider moving log_format to different module
+
     /// <summary><para>
     /// Formats the HttpRequest as in the default manner
     /// </para></summary>
@@ -1109,6 +1065,8 @@ module Http =
     /// Log the HttpRequest to the given logger.
     /// </para></summary>
     val log : Log.Logger -> (HttpContext -> string) -> Applicative
+
+    // TODO: consider moving url_scan to different module
 
     /// <summary><para>
     /// Strongly typed route matching! Matching the uri can be used with the 'parsers'
@@ -1149,7 +1107,7 @@ module Http =
     /// allowing cached entities to be refreshed without requiring multiple requests
     /// or transferring data already held by the client.
     /// </para></summary>
-    val GET : x:HttpContext -> HttpContext option
+    val GET : Applicative
 
     /// <summary>
     /// <para>Match on POST requests.</para>
@@ -1188,7 +1146,7 @@ module Http =
     /// used to direct the user agent to retrieve a cacheable resource.
     /// </para>
     /// </summary>
-    val POST : x:HttpContext -> HttpContext option
+    val POST : Applicative
 
     /// <summary><para>
     /// Match on DELETE requests.
@@ -1210,7 +1168,7 @@ module Http =
     /// method are not cacheable.
     /// </para>
     /// </summary>
-    val DELETE : x:HttpContext -> HttpContext option
+    val DELETE : Applicative
 
     /// <summary><para>
     /// Match on PUT requests
@@ -1256,7 +1214,7 @@ module Http =
     /// Unless otherwise specified for a particular entity-header, the entity-headers in the
     /// PUT request SHOULD be applied to the resource created or modified by the PUT.
     /// </para></summary>
-    val PUT : x:HttpContext -> HttpContext option
+    val PUT : Applicative
 
     /// <summary><para>
     /// Match on HEAD requests.
@@ -1274,7 +1232,7 @@ module Http =
     /// current entity (as would be indicated by a change in Content-Length, Content-MD5,
     /// ETag or Last-Modified), then the cache MUST treat the cache entry as stale.
     /// </para></summary>
-    val HEAD : x:HttpContext -> HttpContext option
+    val HEAD : Applicative
 
     /// <summary><para>
     /// Match on CONNECT requests.
@@ -1282,7 +1240,7 @@ module Http =
     /// This specification (RFC 2616) reserves the method name CONNECT for use with a
     /// proxy that can dynamically switch to being a tunnel (e.g. SSL tunneling [44]).
     /// </para></summary>
-    val CONNECT : x:HttpContext -> HttpContext option
+    val CONNECT : Applicative
 
     /// <summary><para>
     /// Match on PATCH requests.
@@ -1309,7 +1267,7 @@ module Http =
     /// PATCH.
     /// </para></summary>
     /// <remarks>From http://tools.ietf.org/html/rfc5789#page-2</remarks>
-    val PATCH : x:HttpContext -> HttpContext option
+    val PATCH : Applicative
 
     /// <summary><para>
     /// Match on TRACE requests.
@@ -1332,7 +1290,7 @@ module Http =
     /// the entity-body, with a Content-Type of "message/http". Responses to this method
     /// MUST NOT be cached.
     /// </para></summary>
-    val TRACE : x:HttpContext -> HttpContext option
+    val TRACE : Applicative
 
     /// Match on OPTIONS requests
     /// The OPTIONS method represents a request for information about the communication
@@ -1341,8 +1299,9 @@ module Http =
     /// with a resource, or the capabilities of a server, without implying a resource
     /// action or initiating a resource retrieval.
     /// Responses to this method are not cacheable.
-    val OPTIONS : x:HttpContext -> HttpContext option
+    val OPTIONS : Applicative
 
+  /// The Files module implement web parts that send data to the client
   module Files =
 
     /// <summary><para>
@@ -1365,6 +1324,8 @@ module Http =
     /// <remarks>
     /// </remarks>
     val file : filename:string -> WebPart
+
+    // TODO: extract local_file from Files module? Own FileSystem module?
 
     /// <summary><para>
     /// Format a string with a local file path given a file name 'fileName'. You should
@@ -1455,4 +1416,4 @@ module Http =
     /// </para></summary>
     /// <remarks>
     /// </remarks>
-    val authenticate_basic : f:(HttpRequest -> bool) -> p:HttpContext -> Async<unit> option
+    val authenticate_basic : f:(HttpContext -> bool) -> WebPart

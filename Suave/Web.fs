@@ -210,7 +210,9 @@ module ParsingAndControl =
     }
     loop read
 
-  open Suave.Types
+  open Suave.ReqResp
+
+  type internal InternalHttpContext = Connection * HttpContext
 
   /// Gets the empty query string dictionary
   let empty_query_string () = new Dictionary<string,string>()
@@ -380,7 +382,6 @@ module ParsingAndControl =
   open System.Net
   open OpenSSL.SSL
   open OpenSSL.X509
-  open Types
   open OpenSSL
 
   /// Load a readable plain-text stream, based on the protocol in use. If plain HTTP
@@ -534,8 +535,10 @@ module ParsingAndControl =
 
 open System
 open System.Net
-open Suave.Types
+open Suave.Config
+open Suave.ReqResp
 open Suave.Http
+open Suave.Http.Response
 
 /// The default error handler returns a 500 Internal Error in response to
 /// thrown exceptions.
@@ -543,8 +546,8 @@ let default_error_handler (ex : Exception) msg (ctx : HttpContext) = async {
   let request = ctx.request
   msg |> Log.verbosee ctx.runtime.logger "Web.default_error_handler" ctx.request.trace ex
   if IPAddress.IsLoopback ctx.connection.ipaddr then
-    do! (Response.response Codes.HTTP_500 (UTF8.bytes (sprintf "<h1>%s</h1><br/>%A" ex.Message ex)) ctx)
-  else do! (Response.response Codes.HTTP_500 (UTF8.bytes (Codes.http_message Codes.HTTP_500)) ctx)
+    do! (response HTTP_500 (UTF8.bytes (sprintf "<h1>%s</h1><br/>%A" ex.Message ex)) ctx)
+  else do! (response HTTP_500 (UTF8.bytes (http_message HTTP_500)) ctx)
 }
 
 /// Returns the webserver as a tuple of 1) an async computation the yields unit when

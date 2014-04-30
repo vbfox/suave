@@ -5,7 +5,8 @@ module Suave.ReqResp
 open System
 open System.IO
 
-open OpenSSL.X509 // TODO: remove hard binding to OpenSSL
+// TODO: remove hard binding to OpenSSL
+open OpenSSL.X509
 
 /// Gets the supported protocols, HTTP and HTTPS with a certificate
 type Protocol =
@@ -78,25 +79,31 @@ type ReqResp =
     /// The raw request body as a byte array
     raw_body     : Lazy<byte []> }
 
+/// The UserContext is a map of items passed on from previous applicatives,
+/// writers or calls.
 type UserContext = Map<string, string>
+
+/// The HttpContext is a 
+type HttpContext = ReqResp * UserContext
+
+/// A writer has no task other than modifying the state going forward.
+type Writer = HttpContext -> HttpContext
+
+/// <summary><para>
+/// A web part is a thing that executes on a HttpRequest, asynchronously, maybe executing
+/// on the request.
+/// <para></para>
+/// You can do (:Applicative) >>= (:WebPart), because Applicative returns HttpContext option
+/// and WebPart takes HttpContext and is called if the return value from the applicative
+/// is Some value.
+/// </para></summary>
+type WebPart = HttpContext -> Async<unit> option
 
 /// An error handler takes the exception, a programmer-provided message, a request (that failed) and returns
 /// an asynchronous workflow for the handling of the error.
-type ErrorHandler = exn -> String -> ReqResp -> Async<unit>
-
-type HttpContext = ReqResp * UserContext
-
-//  { request    : ReqData
-//  ; runtime    : HttpRuntime
-//  ; connection : Connection }
+type ErrorHandler = exn -> String -> WebPart
 
 type Applicative = HttpContext -> HttpContext option
-
-/// A web part is a thing that executes on a HttpRequest, asynchronously, maybe executing
-/// on the request.
-///
-/// Note: WebResult = Async<unit> option
-type WebPart = HttpContext -> Async<unit> option
 
 /// An exception, raised e.g. if writing to the stream fails
 exception internal InternalFailure of string
@@ -104,9 +111,6 @@ exception internal InternalFailure of string
 module Req =
   //  let request f (a : HttpContext) = f a.request a
   /// Gets the query from the HttpRequest
-  let query (x : ReqData) = x.query
+  let query (x : ReqResp) = x.query
   /// Gets the form from the HttpRequest
-  let form  (x : ReqData) = x.form
-
-module Resp =
-  ()
+  let form  (x : ReqResp) = x.form

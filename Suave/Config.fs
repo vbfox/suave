@@ -6,6 +6,7 @@ open System.Threading
 
 open OpenSSL.X509
 
+open Suave
 open Suave.ReqResp
 open Suave.Log
 
@@ -80,3 +81,7 @@ type SuaveConfig =
 
   /// A logger to log with
   ; logger           : Logger }
+
+let prepend_error_handler (eh : ErrorHandler) (cfg : SuaveConfig) =
+  { cfg with
+      error_handler = fun ex reason -> eh ex reason >>= cfg.error_handler }
