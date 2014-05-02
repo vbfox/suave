@@ -43,6 +43,7 @@
     <Compile Include="AssemblyVersionInfo.fs" />
     <Compile Include="TestUtilities.fs" />
     <Compile Include="Smoke.fs" />
+    <Compile Include="Scratch.fs" />
     <Compile Include="Utils.fs" />
     <Compile Include="Web.fs" />
     <Compile Include="Proxy.fs" />
@@ -88,6 +89,10 @@
     </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="FSharp.Core, Version=4.3.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <Reference Include="NodaTime">
+      <HintPath>..\packages\NodaTime.1.2.0\lib\net35-Client\NodaTime.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="nunit.framework">
       <HintPath>..\packages\NUnit.2.6.3\lib\nunit.framework.dll</HintPath>
     </Reference>
