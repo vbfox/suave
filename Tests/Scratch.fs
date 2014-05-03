@@ -633,6 +633,16 @@ module SocketApi =
     let reuse_address (s : Socket) (value : bool) =
       s.SetSocketOption(socket_level, SocketOptionName.ReuseAddress, value)
 
+    let send_timeout (s : Socket) (value : Duration) =
+      s.SetSocketOption(socket_level,
+                        SocketOptionName.SendTimeout,
+                        value.ToTimeSpan().TotalMilliseconds |> int)
+
+    let receive_timeout (s : Socket) (value : Duration) =
+      s.SetSocketOption(socket_level,
+                        SocketOptionName.ReceiveTimeout,
+                        value.ToTimeSpan().TotalMilliseconds |> int)
+
   let bind (s : Socket) ep =
     s.Bind ep
 
@@ -739,6 +749,7 @@ module HttpServer =
       ct                  : CancellationToken
       wall_clock          : Clock
       random              : Random
+      crypt_random        : System.Security.Cryptography.RandomNumberGenerator
       mk_tls_stream       : Stream -> TLSOptions -> Stream }
 
   type Config =
@@ -749,10 +760,11 @@ module HttpServer =
   type private ServerState =
     { socket : Socket }
 
-  let rec private handle_peer ({ binding = b } as config) peer = async {
+  let rec private handle_peer ({ binding = b } as config) (peer : Socket) = async {
     let ep     = fst config.binding
     let clock  = config.advanced.wall_clock
     let logger = config.mk_logger "suave.handle_peer"
+    ServerEvents.client_connected peer.RemoteEndPoint ep clock |> Log.log logger
     try
       use ns = new NetworkStream(peer)
       let io_stream : Stream =
