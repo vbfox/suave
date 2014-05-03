@@ -19,13 +19,7 @@ type StartedData =
       ((x.socket_bound_utc |> Option.fold (fun _ t -> t) x.start_called_utc) - x.start_called_utc).TotalMilliseconds
       x.source_ip x.source_port
 
-/// Asynchronous extension methods to TcpListener to make
-/// it nicer to consume in F#
-type TcpListener with
-  member x.AsyncAcceptTcpClient() =
-    Async.FromBeginEnd(x.BeginAcceptTcpClient, x.EndAcceptTcpClient)
-
-open Socket 
+open Socket
 
 /// A TCP Worker is a thing that takes a TCP client and returns an asynchronous workflow thereof
 type TcpWorker<'a> = Connection -> Async<'a>

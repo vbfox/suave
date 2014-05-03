@@ -20,6 +20,10 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "suave.WebMachine", "suave.W
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "suave.OpenSSL", "suave.OpenSSL\suave.OpenSSL.fsproj", "{78FF3414-F8E8-410C-AE93-8E6EEEEF1622}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "suave.miTLS", "suave.miTLS\suave.miTLS.fsproj", "{545E0F1E-0A9B-4996-90DA-FC92C1C75E9B}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "suave.sqlite3", "suave.sqlite3\suave.sqlite3.fsproj", "{9F222710-15D6-4CB6-B5A1-DB7CF0C3539D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -54,6 +58,14 @@ Global
 		{78FF3414-F8E8-410C-AE93-8E6EEEEF1622}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{78FF3414-F8E8-410C-AE93-8E6EEEEF1622}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{78FF3414-F8E8-410C-AE93-8E6EEEEF1622}.Release|Any CPU.Build.0 = Release|Any CPU
+		{545E0F1E-0A9B-4996-90DA-FC92C1C75E9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{545E0F1E-0A9B-4996-90DA-FC92C1C75E9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{545E0F1E-0A9B-4996-90DA-FC92C1C75E9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{545E0F1E-0A9B-4996-90DA-FC92C1C75E9B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F222710-15D6-4CB6-B5A1-DB7CF0C3539D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F222710-15D6-4CB6-B5A1-DB7CF0C3539D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F222710-15D6-4CB6-B5A1-DB7CF0C3539D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F222710-15D6-4CB6-B5A1-DB7CF0C3539D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
