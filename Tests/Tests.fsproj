@@ -107,5 +107,6 @@
       <Name>suave</Name>
       <Project>{3DC9193E-BD0C-4486-9C58-56B630C36623}</Project>
     </ProjectReference>
+    <Reference Include="System.Xml" />
   </ItemGroup>
 </Project>
