@@ -12,8 +12,10 @@ module Abstractions =
   module DateTime =
     open System.Globalization
 
+    /// the format of all HTTP headers
     type RFC1132 = Instant -> string
 
+    /// the recommended format for input/output with APIs
     type ISO8601 = Instant -> string
     type RFC3339 = ISO8601
 
@@ -100,6 +102,21 @@ module Abstractions =
     type Logger =
       abstract member Log : LogLevel -> (unit -> LogLine) -> unit
 
+  module Persistence =
+
+    // TODO: revisit our own Cache abstractions, incorporate?
+    type ReadStore =
+      //abstract ReadStream : string (* key *) -> Async<Stream>
+      abstract ReadBytes : string (* key *) -> Async<byte []>
+
+    // TODO: revisit our own Cache abstractions, incorporate?
+    type WriteStore =
+      //abstract WriteStream : string (* key *) -> Stream -> Async<unit>
+      abstract WriteBytes : string (* key *) -> Stream -> Async<byte []>
+
+    // TODO: provide sqlite provider for read/write-stores above
+    // TODO: provide riak provider for read/write-stores above for eventually
+    //       consistent data -- and provide statebox equivalent
 
 module Http =
   open Abstractions.Logging
@@ -146,31 +163,34 @@ module Http =
     type FieldName = string
 
     type CacheReqDir =
-      | NoCache
-      | NoStore
-      | MaxAge of int<s>
-      | MaxStale of int<s> option
-      | MinFresh of int<s>
-      | NoTransform
-      | OnlyIfCached
-      | CacheExt of string
+      | CReq_NoCache
+      | CReq_NoStore
+      | CReq_MaxAge of int<s>
+      | CReq_MaxStale of int<s> option
+      | CReq_MinFresh of int<s>
+      | CReq_NoTransform
+      | CReq_OnlyIfCached
+      | CReq_CacheExt of string
 
     type CacheRespDir =
-      | Public
-      | Private of FieldName option
-      | NoCache of int<s> option
-      | NoStore
-      | NoTransform
-      | MustRevalidate
-      | ProxyRevalidate
-      | MaxAge of int<s>
-      | SMaxAge of int<s>
-      | CacheExtension
+      | CResp_Public
+      | CResp_Private of FieldName option
+      | CResp_NoCache of int<s> option
+      | CResp_NoStore
+      | CResp_NoTransform
+      | CResp_MustRevalidate
+      | CResp_ProxyRevalidate
+      | CResp_MaxAge of int<s>
+      | CResp_SMaxAge of int<s>
+      | CResp_CacheExt of string
 
     // Connection: request only
     type ConnectionToken =
       | Conn_Close
       | Conn_KeepAlive
+      | Conn_Upgrade of string // with list of supported protocols,
+                               // tools.ietf.org/html/draft-ietf-httpbis-http2-12
+                               // also see Upgrade header
 
     // zero index based, inclusive, e.g. bytes 0-499/1234 for first 500 bytes
     type ContentRangeSpec =
@@ -194,6 +214,16 @@ module Http =
         | Exp_Ext (token, None) ->
           token
 
+    // Pragma 14.32
+    type PragmaSpec =
+      | Prag_NoCache
+      | Prag_Ext of Token * TokenOrQuotedString option
+
+    // Retry-After 14.37
+    type RetryAfterSpec =
+      | RA_Date of Instant
+      | RA_Seconds of int<s>
+
   open HeaderData
 
   /// http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
@@ -209,12 +239,29 @@ module Http =
     | ``Cache-Control`` of CacheReqDir // end-to-end
     | Connection of ConnectionToken // point-to-point (segment)
     | Expect of Expectation // server may respond 417 Expectation Failed, or 100 Continue
+    | From of string // email
+    | Host of string // required field, otherwise respond 400
+    | ``If-Match`` of string
+    | ``If-Modified-Since`` of string
+    | ``If-None-Match`` of string
+    | ``If-Range`` of string
+    | ``If-Unmodified-Since`` of Instant // ignore if invalid
+    | ``Max-Forwards`` of uint16
+    | Pragma of PragmaSpec // even thuo a general header, only applicative to req
+    | Range of string // TODO: byte-range-specifier is more complex than ContentRangeSpec
+    | Referer (* sic *) of Uri // absolute or relative, 14.36
+    | TE of string // 14.39 TODO: revisit when doing chunked transfer encoding
+                   // and deflate/gzip/snappy transfer encodings
+    | Trailer of string // not allowed: Trailer, Transfer-Encoding, Content-Length
+    | ``Transfer-Encoding`` of string // 14.41, also 3.6
+    | Warning of string
 
   /// http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
   type Base64 = string
 
+  // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
+  // http://tools.ietf.org/html/draft-ietf-httpbis-http2-12
   type ResponseHeaders =
-    | Server of string
     | ``Cache-Control`` of CacheRespDir
     | ``Content-Encoding`` of string
     | ``Content-Language`` of string list // comma sep
@@ -223,11 +270,21 @@ module Http =
     | ``Content-MD5`` of Base64
     | ``Content-Range`` of ContentRangeSpec // with 206 Partial Content
     | ``Content-Type`` of MediaType
-    | Date of Instant // RFC822, date always in RFC 1123 format
+    | Date of Instant // date always in RFC 1123 format
     | ETag of QuotedString
+    | ``HTTP2-Settings`` of Base64
+    | ``Last-Modified`` of Instant // date always in RFC 1123 format
+    | Location of Uri // only absolute Uris
+    | ``Proxy-Authenticate``  of string // challenge, w/ 407 Proxy Authentication Required
+    | ``Proxy-Authorization`` of string // creds
+    | ``Retry-After`` of RetryAfterSpec // useful with 503 Service Unavailable
+    | Trailer of string // not allowed: Trailer, Transfer-Encoding, Content-Length
+    | ``Transfer-Encoding`` of string // 14.41, also 3.6
+    | Server of string
+    | Warning of string
+    | ``WWW-Authenticate`` of string // challenge, with 401 Unauthorized status
 
   module Conneg =
-    let i : Instant
     ()
 
   type HttpCookie =
@@ -321,6 +378,9 @@ let parsing_lines =
 // TODO: parsing raw request
 // TODO: parsing input headers into map
 
+// TODO: missing Host header -> 400 bad request
+
+
 // RESPONSE
 
 // TODO: receive loop
@@ -339,10 +399,28 @@ let parsing_lines =
 // TODO: write Peach model fuzzer for hypermedia protocol*
 
 // TODO: implement HTTP 2.0 http://tools.ietf.org/html/draft-ietf-httpbis-http2-12
+// TODO: implement HTTP 2.0 with TLS with http://tools.ietf.org/html/draft-ietf-tls-applayerprotoneg-05
+//       https://www.npmjs.org/package/http2
+//       https://github.com/http2/http2-spec/wiki/Implementations
+// TODO: hpack/header packing for HTTP 2.0
+
+// TODO: support OWIN, have a look at https://github.com/MSOpenTech/http2-katana/blob/master/src/Microsoft.Http2.Owin.Server/HttpSocketServer.cs
+
+// APP
+
+// TODO: applicative for the Host header, if not set, return Bad Request
+// TODO: for 'full responses, applicative that gives Content-MD5 header
+// TODO: applicative for session handling, feeding user context with data/sid
+// TODO: Server-Sent Events https://developer.mozilla.org/en-US/docs/Server-sent_events/Using_server-sent_events
+//       http://www.html5rocks.com/en/tutorials/eventsource/basics/
+//       http://www.w3.org/TR/2009/WD-eventsource-20091029/
+// TODO: HTTP 2.0 handshake, priorities, flowControl, securePort
 
 // HTTP CLIENT
 
 // TODO: implement a HttpClient that just works
+
+
 
 // * peach resources;
 // http://www.flinkd.org/2011/07/fuzzing-with-peach-part-1/
