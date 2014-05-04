@@ -183,8 +183,17 @@ module Abstractions =
       abstract member Log : LogLevel -> (unit -> LogLine) -> unit
 
     module Log =
-      let log (logger : Logger) (line : LogLine) =
-        logger.Log line.level  (fun () -> line)
+      let verbose (logger : Logger) (f_line : unit -> LogLine) =
+        logger.Log Verbose f_line
+      let debug (logger : Logger) (f_line : unit -> LogLine) =
+        logger.Log Debug f_line
+      let info (logger : Logger) (f_line : unit -> LogLine) =
+        logger.Log Info f_line
+
+  module StreamTransducers =
+
+    
+
 
   module ServerEvents =
     open Logging
@@ -193,7 +202,7 @@ module Abstractions =
 
     let [<Literal>] server_event = "ss:evt"
 
-    let server_spawned (ep : IPEndPoint) (clock : Clock) =
+    let server_spawned (ep : IPEndPoint) (clock : Clock) () =
       { trace         = None
         level         = Info
         path          = "suave"
@@ -202,20 +211,20 @@ module Abstractions =
         timestamp     = clock.Now()
         tags          = [ server_event ] }
 
-    let client_connected (ep : EndPoint) (binding : IPEndPoint) (clock : Clock) =
+    let client_connected (ep : EndPoint) (binding : IPEndPoint) (clock : Clock) () =
       { trace         = None
         level         = Debug
         path          = "suave.handle_peer"
-        message       = sprintf "client connected [%A]" ep
+        message       = sprintf "client connected [%O]" ep
         ``exception`` = None
         timestamp     = clock.Now()
         tags          = [ server_event ] }
 
-    let client_disconnected (ep : EndPoint) (binding : IPEndPoint) (clock : Clock) =
+    let client_disconnected (ep : EndPoint) (binding : IPEndPoint) (clock : Clock) () =
       { trace         = None
         level         = Debug
         path          = "suave.handle_peer"
-        message       = sprintf "client disconnected [%A]" ep
+        message       = sprintf "client disconnected [%O]" ep
         ``exception`` = None
         timestamp     = clock.Now()
         tags          = [ server_event ] }
@@ -596,7 +605,7 @@ module App =
   type Writer = HttpContext -> HttpContext
 
   /// <summary><para>
-  /// A web part is a thing that executes on a HttpRequest, asynchronously, maybe executing
+  /// A web part is a thing that executes on a Req, asynchronously, maybe executing
   /// on the request.
   /// <para></para>
   /// You can do (:Applicative) >>= (:WebPart), because Applicative returns HttpContext option
@@ -681,28 +690,34 @@ module SocketApi =
       (fun (data, flags, callback, state) -> s.BeginReceive(data, flags, callback, state)),
       s.EndReceive)
 
-module Machines =
-  type Machine<'o> =
-    { todo : string }
+module HttpStreamReader =
+  open Abstractions
+  open Abstractions.StreamTransducers
+  open Abstractions.Problems
+  open Http
 
-  let mk_reader (io_stream : Stream) : Machine<HttpProcol> =
-    { todo = "yup" }
+  type Header = string * string
+
+  type StreamParseState =
+    { position  : int
+      available : int }
+
+  let mk_reader (io_stream : Stream) : Plan<StreamParseState, Header, Choice<Req, Problem>> =
+    //{ todo = "yup" }
+    io_stream
 
 module internal Implementation =
   open Http
+  open HttpStreamReader
   open Abstractions
   open Abstractions.Problems
-
-  // let render_problem (problem : Problem) =
-  // TODO
+  open Abstractions.StreamTransducers
 
   let respond (code : HttpCode) data =
     async { return () } |> Some
 
-  let OK str : WebPart =
-    respond HTTP_200
-
-  let serve_request (machine : Machine<HttpRequest>) =
+  /// returns true if connection keep alive
+  let serve_request (machine : Plan<StreamParseState, Header, Req>) =
     try
       // TODO: implement the protocol of parsing the headers and acting
       // on them
@@ -711,7 +726,7 @@ module internal Implementation =
     | NoHttpRequest problem ->
       machine.Dispose()
     | InvalidHttpRequest problem ->
-      response HTTP_400 (http_reason HTTP_400)
+      respond HTTP_400 (http_reason HTTP_400)
 
 module HttpServer =
   open Abstractions
@@ -753,9 +768,9 @@ module HttpServer =
       mk_tls_stream       : Stream -> TLSOptions -> Stream }
 
   type Config =
-    { binding    : IPEndPoint * TLS.TLSOptions option
-      mk_logger  : LoggerPath -> Logger
-      advanced   : AdvancedConfig }
+    { binding   : IPEndPoint * TLS.TLSOptions option
+      mk_logger : LoggerPath -> Logger
+      advanced  : AdvancedConfig }
 
   type private ServerState =
     { socket : Socket }
@@ -764,7 +779,7 @@ module HttpServer =
     let ep     = fst config.binding
     let clock  = config.advanced.wall_clock
     let logger = config.mk_logger "suave.handle_peer"
-    ServerEvents.client_connected peer.RemoteEndPoint ep clock |> Log.log logger
+    ServerEvents.client_connected peer.RemoteEndPoint ep clock |> Log.debug logger
     try
       use ns = new NetworkStream(peer)
       let io_stream : Stream =
@@ -775,7 +790,7 @@ module HttpServer =
       if cont then return! handle_peer config peer
       else return ()
     finally
-      ServerEvents.client_disconnected peer.RemoteEndPoint ep clock |> Log.log logger
+      ServerEvents.client_disconnected peer.RemoteEndPoint ep clock |> Log.debug logger
       noexn (fun () -> close peer 0)
     }
 
@@ -846,7 +861,8 @@ module HttpClient =
         read_it ()
     read_it ()
 
-  let send_request (client : ClientInstance) data =
+  /// send the raw data to the socket
+  let netcat (client : ClientInstance) data =
     data |> send client.socket default_flags
 
   type HttpResponse =
@@ -884,8 +900,9 @@ module Tests =
         with_client (ip, port)
           (fun client -> async {
             let str = "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"
-            do! str |> as_raw_request
-                |> send_request client
+            do! str
+                |> as_raw_request
+                |> netcat client
                 |> Async.Ignore
             return read_response client })
         |> Async.RunSynchronously
