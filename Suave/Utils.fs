@@ -105,6 +105,11 @@ module Option =
   let or_default value opt =
     opt |> Option.fold (fun s t -> t) value
 
+  let or_default' f_value opt =
+    match opt with
+    | None -> f_value ()
+    | Some x -> x
+
 module RandomExtensions =
   open System
 

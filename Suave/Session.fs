@@ -167,6 +167,21 @@ module Auth =
 module State =
   open Auth
 
+  /// The key in the `context.user_data` that contains the id of the session
+  /// state - the state id.
+  [<Literal>]
+  let SessionStateId = "Suave.Session.State"
+
+  /// Extensions to HttpContext for Session support.
+  [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+  module HttpContext =
+
+    /// Gets the state id from the HttpContext
+    let state_id x =
+      x.user_state
+      |> Map.tryFind SessionStateId
+      |> Option.map (fun x -> x :?> string)
+
   /// Anything stateful implies the user is 'authenticated'. What it means for
   /// your application that the user is authenticated in the sense that Suave
   /// means it, is up to you as a programmer. You can choose to let all users
@@ -178,14 +193,16 @@ module State =
   let stateful relative_expiry
                failure
                (state_store_type : string)
-               (session_store : (*session id*) string -> StateStore)
+               (session_store : (*state id*) string -> StateStore)
                : WebPart =
-    authenticate relative_expiry failure >>=
       context (fun ctx ->
         match ctx.user_state |> Map.tryFind state_store_type with
         | None       ->
-          let session_id = ctx |> HttpContext.session_id |> Option.get
-          Writers.set_user_data state_store_type (session_store session_id)
+          let state_id =
+            ctx
+            |> HttpContext.state_id
+            |> Option.or_default' (fun () -> Crypto.generate_key' Auth.SessionIdLength)
+          Writers.set_user_data state_store_type (session_store state_id)
         | Some store ->
           succeed)
 
