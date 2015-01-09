@@ -3,6 +3,7 @@ module Suave.Web
 /// Parsing and control flow handling for web requests
 module ParsingAndControl =
   open System
+  open System.Reflection
   open System.IO
   open System.Text
   open System.Diagnostics
@@ -29,7 +30,7 @@ module ParsingAndControl =
       match xxs with
       | [] -> []
       | x :: tail ->
-        if x.length + acc >= number then 
+        if x.length + acc >= number then
           let segment = BufferSegment.mk x.buffer (x.offset  + (number - acc)) (x.length - number + acc)
           segment :: tail
         else loop tail (acc + x.length)
@@ -75,7 +76,7 @@ module ParsingAndControl =
       let! res, connection = lift_async <| split x connection select marker.Length
       return Found res, connection
     | None   ->
-      let rec loop (xs : BufferSegment list) (acc,n) =
+      let rec loop (xs : BufferSegment list) (acc, n) =
         if n >= marker.Length then
           acc,xs
         else
@@ -362,7 +363,7 @@ module ParsingAndControl =
                                                     ; (http_code r.status).ToString()
                                                     ; http_reason r.status ])
     do! async_writeln connection Internals.server_header
-    do! async_writeln connection (String.Concat( [| "Date: "; Globals.utc_now().ToString("R") |]))
+    do! async_writeln connection (String.Concat( [| "Date: "; Globals.now().ToString("R") |]))
 
     do! write_headers connection r.headers
     do! write_content_type connection r.headers
@@ -414,8 +415,8 @@ module ParsingAndControl =
 
     let rec loop (ctx : HttpContext) = socket {
 
-      let verbose  = Log.verbose runtime.logger "Suave.Web.request_loop.loop" TraceHeader.empty
-      let verbosef = Log.verbosef runtime.logger "Suave.Web.request_loop.loop" TraceHeader.empty
+      let verbose  = Log.verbose runtime.logger "Suave.Web.request_loop.loop"
+      let verbosef = Log.verbosef runtime.logger "Suave.Web.request_loop.loop"
 
       verbose "-> processor"
       let! result = process_request ctx
@@ -473,7 +474,7 @@ module ParsingAndControl =
 
   let resolve_directory home_directory =
     match home_directory with
-    | None   -> System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)
+    | None   -> Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
     | Some s -> s
 
 ////////////////////////////////////////////////////

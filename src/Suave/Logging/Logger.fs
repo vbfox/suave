@@ -4,17 +4,29 @@ open System
 
 /// The primary Logger abstraction that you can log data into
 type Logger =
-  /// log - evaluate the function if the log level matches - by making it
-  /// a function we don't needlessly need to evaluate it
-  /// Calls to this method must be thread-safe and not change any state
-  abstract member Log : LogLevel -> (unit -> LogLine) -> unit
+  abstract Verbose : (unit -> LogLine) -> unit
+  abstract Debug : (unit -> LogLine) -> unit
+  abstract Log : LogLine -> unit
+
+[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module Logger =
+  let debug (logger : Logger) f_line =
+    logger.Debug f_line
+  let verbose (logger : Logger) f_line =
+    logger.Verbose f_line
+  let log (logger : Logger) (line : LogLine) =
+    logger.Log line
 
 module Loggers =
   /// A logger to use for combining a number of other loggers
   type CombiningLogger(other_loggers : Logger list) =
     interface Logger with
-      member x.Log level f_line =
-        other_loggers |> List.iter (fun l -> l.Log level f_line)
+      member x.Verbose f_line =
+        other_loggers |> List.iter (fun logger -> logger.Verbose f_line)
+      member x.Debug f_line =
+        other_loggers |> List.iter (fun logger -> logger.Debug f_line)
+      member x.Log line =
+        other_loggers |> List.iter (fun l -> l.Log line)
 
   /// let the ISO8601 love flow
   let internal default_formatter (line : LogLine) =
@@ -36,11 +48,11 @@ module Loggers =
 
     let to_color = function
       | LogLevel.Verbose -> ConsoleColor.DarkGreen
-      | LogLevel.Debug -> ConsoleColor.Green
-      | LogLevel.Info -> ConsoleColor.White
-      | LogLevel.Warn -> ConsoleColor.Yellow
-      | LogLevel.Error -> ConsoleColor.DarkRed
-      | LogLevel.Fatal -> ConsoleColor.Red
+      | LogLevel.Debug   -> ConsoleColor.Green
+      | LogLevel.Info    -> ConsoleColor.White
+      | LogLevel.Warn    -> ConsoleColor.Yellow
+      | LogLevel.Error   -> ConsoleColor.DarkRed
+      | LogLevel.Fatal   -> ConsoleColor.Red
 
     let log color line =
       if colourise then
@@ -53,13 +65,27 @@ module Loggers =
         (write << formatter) line
 
     interface Logger with
-      member x.Log level f = if level >= min_level then log (to_color level) (f ())
+      member x.Verbose f_line =
+        if LogLevel.Verbose >= min_level then
+          let line = f_line ()
+          log (to_color line.level) line
+      member x.Debug f_line =
+        if LogLevel.Debug >= min_level then
+          let line = f_line ()
+          log (to_color line.level) line
+      member x.Log line =
+        if line.level >= min_level then log (to_color line.level) line
       
   type OutputWindowLogger(min_level, ?formatter) =
     let formatter = defaultArg formatter default_formatter
     let log line = System.Diagnostics.Debug.WriteLine(formatter line)
     interface Logger with
-      member x.Log level f_line = if level >= min_level then log (f_line ())
+      member x.Verbose f_line =
+        if LogLevel.Verbose >= min_level then log (f_line ())
+      member x.Debug f_line =
+        if LogLevel.Debug >= min_level then log (f_line ())
+      member x.Log line =
+        if line.level >= min_level then log line
 
   let sane_defaults_for level =
     if level >= LogLevel.Warn then

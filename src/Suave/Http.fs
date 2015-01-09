@@ -364,13 +364,14 @@ module Http =
         "0"
 
     let log (logger : Logger) (formatter : HttpContext -> string) (ctx : HttpContext) =
-      logger.Log LogLevel.Debug <| fun _ ->
+      logger.Debug <| fun _ ->
         { trace         = ctx.request.trace
           message       = formatter ctx
           level         = LogLevel.Debug
           path          = "Suave.Http.web-requests"
           ``exception`` = None
-          ts_utc_ticks  = Globals.utc_now().Ticks }
+          data          = Map.empty
+          ts_utc_ticks  = Globals.now().Ticks }
 
       succeed ctx
 
@@ -420,7 +421,7 @@ module Http =
                  (send : string -> bool -> WebPart)
                  ({ request = r; runtime = rt } as ctx) =
       let log =
-        Log.verbose rt.logger "Suave.Http.ServeResource.resource" TraceHeader.empty
+        Log.verbose rt.logger "Suave.Http.ServeResource.resource"
 
       let send_it name compression =
         set_header "Last-Modified" ((get_last key : DateTime).ToString("R"))
@@ -517,7 +518,6 @@ module Http =
       warbler (fun { request = r; runtime = { logger = l } } ->
         Log.verbose l
           "Suave.Http.Files.browse"
-          TraceHeader.empty
           (sprintf "Files.browse trying file (local_file url:'%s' root:'%s')"
             r.url.AbsolutePath root_path)
         file (resolve_path root_path r.url.AbsolutePath))

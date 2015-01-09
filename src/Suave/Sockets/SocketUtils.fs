@@ -13,7 +13,7 @@ module SocketUtils =
   type ByteSegment = System.ArraySegment<byte>
   // Async is already a delayed type
   type SocketOp<'a> = Async<Choice<'a,Error>>
-  
+
   let abort x = async { return Choice2Of2 x }
   
   /// Wraps the Socket.xxxAsync logic into F# async logic.

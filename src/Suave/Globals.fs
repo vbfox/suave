@@ -15,7 +15,7 @@ let random = System.Random()
 /// If you are unit-testing
 /// you can set this, but as with all globals, you need to set it back afterwards
 /// or you will break subsequent unit tests.
-let mutable utc_now = fun () -> System.DateTimeOffset.UtcNow
+let mutable now = fun () -> System.DateTimeOffset.UtcNow
 
 /// From the TCP module, keeps track of the number of clients
 let internal number_of_clients = ref 0L
@@ -34,4 +34,5 @@ module Internals =
 
   let SUAVE_VERSION = Assembly.GetExecutingAssembly().GetName().Version.ToString()
 
-  let server_header = String.Concat [| "Server: Suave/"; SUAVE_VERSION; " (http://suave.io)" |]
+  let server_header =
+    String.Concat [| "Server: Suave/"; SUAVE_VERSION; " (http://suave.io)" |]

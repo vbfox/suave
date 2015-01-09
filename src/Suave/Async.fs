@@ -61,7 +61,7 @@ type Microsoft.FSharp.Control.AsyncBuilder with
   member x.Bind(t : Task<'T>, f:'T -> Async<'R>) : Async<'R> = async.Bind(Async.AwaitTask t, f)
   member x.Bind(t : Task, f : unit -> Async<'R>) : Async<'R> = async.Bind(Async.AwaitTask t, f)
 
-/// Haskell's TVar but without the STM.
+/// A cell that can be completed
 type AsyncResultCell<'a>() =
   let source = new TaskCompletionSource<'a>()
 
@@ -69,6 +69,7 @@ type AsyncResultCell<'a>() =
   /// invocation, returns true, otherwise if there already is a value set, return false.
   member x.Complete result =
     source.TrySetResult result
+    |> ignore
 
   /// Await the result of the AsyncResultCell, yielding Some(:'T)
   /// after the timeout or otherwise None.

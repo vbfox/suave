@@ -86,7 +86,7 @@ module Cookie =
     let expiry =
       match relative_expiry with
       | Session -> None
-      | MaxAge ts  -> Some (Globals.utc_now().Add ts)
+      | MaxAge ts  -> Some (Globals.now().Add ts)
     let http_cookie = { http_cookie with expires = expiry }
     http_cookie, client_cookie_from http_cookie
 

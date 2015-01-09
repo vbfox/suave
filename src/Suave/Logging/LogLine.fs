@@ -15,6 +15,8 @@ type LogLine =
     path          : string
     /// the message that the application wants to log
     message       : string
+
+    data          : Map<string, obj>
     /// an optional exception
     ``exception`` : exn option
     /// timestamp when this log line was created
@@ -22,13 +24,15 @@ type LogLine =
     
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module LogLine =
-  let mk path level trace ex message =
+  let mk path level trace ex data message =
+    let now = Globals.now ()
     { message       = message
       level         = level
       path          = path
-      ``exception`` = ex
       trace         = trace
-      ts_utc_ticks  = Globals.utc_now().Ticks }
+      ``exception`` = ex
+      data          = data
+      ts_utc_ticks  = now.Ticks }
 
   let trace_ =
     (fun x -> x.trace),
@@ -45,3 +49,15 @@ module LogLine =
   let message_ =
     (fun x -> x.message),
     fun v (x : LogLine) -> { x with message = v }
+
+  let exception_ =
+    (fun x -> x.``exception``),
+    fun v (x : LogLine) -> { x with ``exception`` = v }
+
+  let data_ =
+    (fun x -> x.data),
+    fun v (x : LogLine) -> { x with data = v }
+
+  let ts_utc_ticks_ =
+    (fun x -> x.ts_utc_ticks),
+    fun v (x : LogLine) -> { x with ts_utc_ticks = v }

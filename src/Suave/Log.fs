@@ -1,42 +1,38 @@
 ﻿namespace Suave
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module Log =
+module internal Log =
+  open Suave.Logging
 
-    open System
-    open System.Diagnostics
-    
-    open Suave.Logging
-    open Suave.Utils
-    open Suave.Utils.RandomExtensions
+  let logger : Suave.Logging.Logger option ref =
+    ref None
 
-    let verbose (logger : Logger) path trace message =
-      logger.Log LogLevel.Verbose (fun _ -> LogLine.mk path LogLevel.Verbose trace None message)
+  let verbose (logger : Logger) path message =
+    logger.Log (LogLine.mk path LogLevel.Verbose TraceHeader.empty None Map.empty message)
 
-    let verbosef logger path trace f_format =
-      f_format (Printf.kprintf (verbose logger path trace))
+  let verbosef logger path f_format =
+    f_format (Printf.kprintf (verbose logger path))
 
-    let verbosee (logger : Logger) path trace ex message =
-      logger.Log LogLevel.Verbose (fun _ -> LogLine.mk path LogLevel.Verbose trace (Some ex) message)
+  let verbosee (logger : Logger) path ex message =
+    logger.Log (LogLine.mk path LogLevel.Verbose TraceHeader.empty (Some ex) Map.empty message)
 
-    let info (logger : Logger) path trace message =
-      logger.Log LogLevel.Info (fun _ -> LogLine.mk path LogLevel.Info trace None message)
+  let debug (logger : Logger) path message =
+    logger.Log (LogLine.mk path LogLevel.Debug TraceHeader.empty None Map.empty message)
 
-    let infof logger path trace f_format =
-      f_format (Printf.kprintf (info logger path trace))
+  let debugf logger path f_format =
+    f_format (Printf.kprintf (debug logger path))
 
-    let infoe (logger : Logger) path trace ex message =
-      logger.Log LogLevel.Info (fun _ -> LogLine.mk path LogLevel.Info trace (Some ex) message)
+  let debuge (logger : Logger) path ex message =
+    logger.Log (LogLine.mk path LogLevel.Debug TraceHeader.empty (Some ex) Map.empty message)
 
-    let intern (logger : Logger) path =
-      verbose logger path (TraceHeader.empty)
+  let info (logger : Logger) path trace message =
+    logger.Log (LogLine.mk path LogLevel.Info trace None Map.empty message)
 
-    let interne (logger : Logger) path =
-      verbosee logger path (TraceHeader.empty)
+  let infof logger path trace f_format =
+    f_format (Printf.kprintf (info logger path trace))
 
-    let internf (logger : Logger) path f_format =
-      f_format (Printf.kprintf (verbose logger path (TraceHeader.empty)))
+  let infoe (logger : Logger) path trace ex message =
+    logger.Log (LogLine.mk path LogLevel.Info trace (Some ex) Map.empty message)
 
-    let log (logger : Logger) path level msg =
-      LogLine.mk path level TraceHeader.empty None msg
-      |> fun line -> logger.Log level (fun () -> line)
+  let log (logger : Logger) path level msg =
+    logger.Log (LogLine.mk path level TraceHeader.empty None Map.empty msg)
