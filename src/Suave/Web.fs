@@ -416,30 +416,30 @@ module ParsingAndControl =
                 (consumer : HttpConsumer) =
 
     let log_req_start count { request = req } =
-      [ "req", box req
-        "connection_requests", box count
-        "content_length", req.headers %% "content-length"
-                          |> Option.fold (fun s t -> uint64 t) 0UL
-                          |> box
-      ]
-      |> Map.ofList
-      |> fun data -> 
-        LogLine.mk (log_path "http_loop") LogLevel.Debug req.trace
-                   None data (Set.empty |> Set.add TraceHeader.ServerRecv)
-                   "request started"
-      |> Logger.log logger
+      Logger.debug logger (fun _ ->
+        [ "req", box req
+          "connection_requests", box count
+          "content_length", req.headers %% "content-length"
+                            |> Option.fold (fun s t -> uint64 t) 0UL
+                            |> box
+        ]
+        |> Map.ofList
+        |> fun data -> 
+          LogLine.mk (log_path "http_loop") LogLevel.Debug req.trace
+                     None data (Set.empty |> Set.add TraceHeader.ServerRecv)
+                     "request started")
 
     let log_req_end body_bytes_sent bytes_sent ({ request = req } as ctx : HttpContext) =
-      [ "body_bytes_sent", body_bytes_sent |> box
-        "bytes_sent", bytes_sent |> box
-        "status", ctx.response.status |> Codes.http_code |> box
-      ]
-      |> Map.ofList
-      |> fun data ->
-        LogLine.mk (log_path "http_loop") LogLevel.Debug req.trace
-                   None data (Set.empty |> Set.add TraceHeader.ServerSend)
-                   "request ended"
-      |> Logger.log logger
+      Logger.debug logger (fun _ ->
+        [ "body_bytes_sent", body_bytes_sent |> box
+          "bytes_sent", bytes_sent |> box
+          "status", ctx.response.status |> Codes.http_code |> box
+        ]
+        |> Map.ofList
+        |> fun data ->
+          LogLine.mk (log_path "http_loop") LogLevel.Debug req.trace
+                     None data (Set.empty |> Set.add TraceHeader.ServerSend)
+                     "request ended")
 
     let rec loop count (ctx : HttpContext) = socket {
 

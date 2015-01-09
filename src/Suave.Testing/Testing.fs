@@ -67,7 +67,6 @@ module Utilities =
     | HttpMethod.CONNECT -> failwithf "CONNECT not a supported method in the unit tests"
     | HttpMethod.OTHER x -> failwithf "%A not a supported method" x
 
-
 open Utilities
 
 /// This test context is a holder for the runtime values of the web
