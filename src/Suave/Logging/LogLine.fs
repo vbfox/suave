@@ -27,7 +27,7 @@ type LogLine =
 
     /// timestamp when this log line was created
     timestamp     : DateTimeOffset }
-    
+
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module LogLine =
   let mk path level trace ex data tags message =
@@ -72,3 +72,4 @@ module LogLine =
   let timestamp_ =
     (fun x -> x.timestamp),
     fun v (x : LogLine) -> { x with timestamp = v }
+

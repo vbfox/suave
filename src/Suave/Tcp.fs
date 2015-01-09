@@ -28,6 +28,8 @@ type StartedData =
     socket_bound : DateTimeOffset option
     binding      : SocketBinding }
 with
+  member x.timespan =
+    x.socket_bound |> Option.map (fun sb -> sb - x.start_called)
   override x.ToString() =
     sprintf "%A" x
 
@@ -134,7 +136,7 @@ module internal Impl =
       let ip_address = (socket.RemoteEndPoint :?> IPEndPoint).Address
       Interlocked.Increment Globals.number_of_clients |> ignore
 
-      Log.verbosef logger "Suave.Tcp.tcp_ip_server.job" (fun fmt -> fmt "%O connected, total: %d clients" ip_address !Globals.number_of_clients)
+      Log.verbosef logger "Suave.Tcp.job_runner" (fun fmt -> fmt "%O connected, total: %d clients" ip_address !Globals.number_of_clients)
 
       try
         let read_args, write_args = read_pool.Pop(), write_pool.Pop()
@@ -145,7 +147,7 @@ module internal Impl =
                 read_args  = read_args
                 write_args = write_args}
             buffer_manager = buffer_manager
-            line_buffer  = buffer_manager.PopBuffer "Suave.Tcp.tcp_ip_server.job"
+            line_buffer  = buffer_manager.PopBuffer "Suave.Tcp.job_runner"
             segments     = []
           }
         use! oo = Async.OnCancel (fun () -> intern "disconnected client (async cancel)"
@@ -157,53 +159,48 @@ module internal Impl =
         accept_pool.Push accept_args
         read_pool.Push read_args
         write_pool.Push write_args
-        buffer_manager.FreeBuffer(connection.line_buffer, "Suave.Tcp.tcp_ip_server.job")
+        buffer_manager.FreeBuffer(connection.line_buffer, "Suave.Tcp.job_runner")
         Interlocked.Decrement(Globals.number_of_clients) |> ignore
-        Log.verbosef logger "Suave.Tcp.tcp_ip_server.job" (fun fmt -> fmt "%O disconnected, total: %d clients" ip_address !Globals.number_of_clients)
+        Log.verbosef logger "Suave.Tcp.job_runner" (fun fmt -> fmt "%O disconnected, total: %d clients" ip_address !Globals.number_of_clients)
       with
       | :? System.IO.EndOfStreamException ->
         intern "disconnected client (end of stream)"
       | ex -> "tcp request processing failed" |> Log.verbosee logger "Suave.Tcp.tcp_ip_server.job" ex
     }
 
-  let accept_loop logger 
+  let accept_loop logger
                   (accepting : AsyncResultCell<_>)
                   binding
                   listen_socket
                   (accept_pool : SAEAP)
-                  (run_job : SAEA -> Async<_>)
-                  =
-    async {
-      let start_data = StartedData.start binding
+                  (run_job : SAEA -> Async<_>) = async {
+    let start_data = StartedData.start binding
 
-      try
-        use! dd = Async.OnCancel(fun () -> stop_tcp logger "tcp_ip_server async cancelled" listen_socket)
-        let! token = Async.CancellationToken
+    try
+      use! dd = Async.OnCancel(fun () -> stop_tcp logger "tcp_ip_server async cancelled" listen_socket)
+      let! token = Async.CancellationToken
 
-        let start_data = StartedData.started start_data
-        accepting.Complete start_data
+      let start_data = StartedData.started start_data
+      accepting.Complete start_data
 
-        logger.Log
-          { path          = "Suave.Tcp.tcp_ip_server"
-            trace         = TraceHeader.empty
-            message       = sprintf "listener started in %O%s" start_data (if token.IsCancellationRequested then ", cancellation requested" else "")
-            level         = LogLevel.Info
-            ``exception`` = None
-            data          = Map.empty
-            tags          = Set.empty
-            timestamp     = Globals.now() }
+      Log.infof logger "Suave.Tcp.accept_loop" TraceHeader.empty
+                (fun fmt ->
+                  let c = if token.IsCancellationRequested then ", cancellation requested" else ""
+                  let time = start_data.timespan |> Option.get
+                  fmt "listener started in %O ms, on %O%s" time.TotalMilliseconds
+                      start_data.binding c)
 
-        while not (token.IsCancellationRequested) do
-          try
-            let accept_args = accept_pool.Pop()
-            let! res = accept listen_socket accept_args
-            Async.Start (run_job accept_args, token)
-          with ex -> "failed to accept a client" |> Log.verbosee logger "Suave.Tcp.tcp_ip_server" ex
-        return ()
-      with ex ->
-        "tcp server failed" |> Log.verbosee logger "Suave.Tcp.tcp_ip_server" ex
-        return ()
-    }
+      while not (token.IsCancellationRequested) do
+        try
+          let accept_args = accept_pool.Pop()
+          let! _ = accept listen_socket accept_args
+          Async.Start (run_job accept_args, token)
+        with ex -> "failed to accept a client" |> Log.verbosee logger "Suave.Tcp.tcp_ip_server" ex
+      return ()
+    with ex ->
+      "tcp server failed" |> Log.verbosee logger "Suave.Tcp.tcp_ip_server" ex
+      return ()
+  }
 
 open Impl
 
@@ -212,8 +209,7 @@ open Impl
 /// listening to its address/port combination), and an asynchronous workflow that
 /// yields when the full server is cancelled. If the 'has started listening' workflow
 /// returns None, then the start timeout expired.
-let tcp_ip_server (buffer_size        : int,
-                   max_concurrent_ops : int)
+let tcp_ip_server (buffer_size        : int, max_concurrent_ops : int)
                   (logger             : Logger)
                   (serve_client       : TcpWorker<unit>)
                   (binding            : SocketBinding) =

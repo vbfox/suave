@@ -1,5 +1,8 @@
 module Suave.Web
 
+let private log_path sub =
+  System.String.Concat [| "Suave.Web."; sub |]
+
 /// Parsing and control flow handling for web requests
 module ParsingAndControl =
   open System
@@ -104,22 +107,21 @@ module ParsingAndControl =
     }
 
   let read_more_data connection = async {
-    let buff = connection.buffer_manager.PopBuffer("Suave.Web.read_till_pattern.loop")
+    let buff = connection.buffer_manager.PopBuffer("Suave.Web.read_more_data")
     let! result = read_data connection buff
     match result with
     | Choice1Of2 data ->
       return { connection with segments = connection.segments @ [data] } |> Choice1Of2
     | Choice2Of2 error ->
       for b in connection.segments do
-        do connection.buffer_manager.FreeBuffer( b.buffer, "Suave.Web.read_till_pattern.loop")
-      do connection.buffer_manager.FreeBuffer( buff, "Suave.Web.read_till_pattern.loop")
+        do connection.buffer_manager.FreeBuffer(b.buffer, "Suave.Web.read_more_data")
+      do connection.buffer_manager.FreeBuffer(buff, "Suave.Web.read_mode_data")
       return Choice2Of2 error
     }
 
   /// Read the passed stream into buff until the EOL (CRLF) has been reached
   /// and returns an array containing excess data read past the marker
   let read_till_pattern (connection : Connection) scan_data =
-
     let rec loop (connection : Connection)  = socket {
       let! res, connection = scan_data connection
       match res with
@@ -277,10 +279,10 @@ module ParsingAndControl =
   let parse_post_data = to_async <| parse_post_data'
 
   /// Process the request, reading as it goes from the incoming 'stream', yielding a HttpRequest
-  /// when done
+  /// when done. The HttpRequest is 'new' and has an assigned trace id.
   let process_request ({ connection = connection
                          runtime    = runtime } as ctx)
-                      : SocketOp<HttpContext option> = socket {
+                      : SocketOp<Choice<HttpContext, string>> = socket {
 
     let! (first_line : string), connection' = read_line connection
 
@@ -288,27 +290,26 @@ module ParsingAndControl =
     let meth = HttpMethod.parse raw_method
 
     let! headers, connection'' = read_headers connection'
+    match headers %% "host" with
+    | None ->
+      return Choice2Of2 "missing Host header"
+    | Some host ->
+      let host =
+        match host with
+        | s when System.Text.RegularExpressions.Regex.IsMatch(s, ":\d+$") ->
+          s.Substring(0, s.LastIndexOf(':'))
+        | s -> s
+      let request =
+        HttpRequest.mk http_version
+                       (runtime.matched_binding.uri path raw_query)
+                       (ClientOnly host)
+                       meth headers raw_query
+                       (parse_trace_headers headers)
+                       runtime.matched_binding.scheme.secure
+                       connection''.ipaddr
 
-    // TODO: if client Host header not present, respond with 400 Bad Request as
-    // per http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
-    let host =
-      headers %% "host" |> Option.get
-      |> function
-      | s when System.Text.RegularExpressions.Regex.IsMatch(s, ":\d+$") ->
-        s.Substring(0, s.LastIndexOf(':'))
-      | s -> s
-
-    let request =
-      HttpRequest.mk http_version
-                     (runtime.matched_binding.uri path raw_query)
-                     (ClientOnly host)
-                     meth headers raw_query
-                     (parse_trace_headers headers)
-                     runtime.matched_binding.scheme.secure
-                     connection''.ipaddr
-
-    return Some { ctx with request    = request
-                           connection = connection'' }
+      return Choice1Of2 { ctx with request    = request
+                                   connection = connection'' }
   }
 
   open System.Net
@@ -336,7 +337,7 @@ module ParsingAndControl =
     for x,y in headers do
       if not (List.exists (fun y -> x.ToLower().Equals(y)) ["server";"date";"content-length"]) then
         do! async_writeln connection (String.Concat [| x; ": "; y |])
-    }
+  }
 
   open Types.Codes
   open Globals
@@ -357,7 +358,6 @@ module ParsingAndControl =
     | NullContent -> failwith "TODO: unexpected NullContent value for 'write_content'"
 
   let response_f ({ response = r } as context : HttpContext) = socket {
-    
     let connection = context.connection
     do! async_writeln connection (String.concat " " [ "HTTP/1.1"
                                                     ; (http_code r.status).ToString()
@@ -376,19 +376,19 @@ module ParsingAndControl =
   let internal run ctx (web_part : WebPart) = 
     let execute _ = async {
       try  
-          let! q  = web_part ctx
-          return q
-        with ex ->
-          return! ctx.runtime.error_handler ex "request failed" ctx
+        let! q  = web_part ctx
+        return q
+      with ex ->
+        return! ctx.runtime.error_handler ex "request failed" ctx
     }
     socket {
       let! result = lift_async <| execute ()
       match result with 
       | Some executed_part ->
         do! response_f executed_part
-        return Some <| executed_part
+        return Some executed_part
       | None -> return None
-  }
+    }
 
   type HttpConsumer =
     | WebPart of WebPart
@@ -399,54 +399,87 @@ module ParsingAndControl =
     | WebPart web_part ->
       return! run ctx web_part
     | SocketPart writer ->
-      let! intermediate = lift_async <| writer ctx
+      let! intermediate = lift_async (writer ctx)
       match intermediate with
-      | Some task ->
-        return! task ctx
-      | None -> return Some ctx
+      | Some task -> return! task ctx
+      | None      -> return Some ctx
     }
 
   let clean_response (ctx : HttpContext) =
     { ctx with response = HttpResult.empty }
 
-  let http_loop ({ runtime = runtime
-                   connection = connection } as ctx_outer)
+  /// The HTTP loop is responsible for one or many HTTP requests from a single
+  /// client connection.
+  let http_loop ({ runtime    = { logger = logger } as runtime
+                   connection = connection
+                 } as ctx_outer)
                 (consumer : HttpConsumer) =
 
-    let rec loop (ctx : HttpContext) = socket {
+    let log_req_start count { request = req } =
+      [ "req", box req
+        "connection_requests", box count
+        "content_length", req.headers %% "content-length"
+                          |> Option.fold (fun s t -> uint64 t) 0UL
+                          |> box
+      ]
+      |> Map.ofList
+      |> fun data -> 
+        LogLine.mk (log_path "http_loop") LogLevel.Debug req.trace
+                   None data (Set.empty |> Set.add TraceHeader.ServerRecv)
+                   "request started"
+      |> Logger.log logger
 
-      let verbose  = Log.verbose runtime.logger "Suave.Web.request_loop.loop"
-      let verbosef = Log.verbosef runtime.logger "Suave.Web.request_loop.loop"
+    let log_req_end body_bytes_sent bytes_sent ({ request = req } as ctx : HttpContext) =
+      [ "body_bytes_sent", body_bytes_sent |> box
+        "bytes_sent", bytes_sent |> box
+        "status", ctx.response.status |> Codes.http_code |> box
+      ]
+      |> Map.ofList
+      |> fun data ->
+        LogLine.mk (log_path "http_loop") LogLevel.Debug req.trace
+                   None data (Set.empty |> Set.add TraceHeader.ServerSend)
+                   "request ended"
+      |> Logger.log logger
 
-      verbose "-> processor"
+    let rec loop count (ctx : HttpContext) = socket {
+
       let! result = process_request ctx
-      verbose "<- processor"
 
       match result with
-      | None -> verbose "'result = None', exiting"
-      | Some ctx ->
+      | Choice1Of2 ctx ->
+
+        log_req_start count ctx
+
         let! result = operate consumer ctx
+
         match result with
         | Some ctx ->
           match ctx.request.headers %% "connection" with
-          | Some (x : string) when x.ToLower().Equals("keep-alive") ->
-            verbose "'Connection: keep-alive' recurse"
-            return! loop (clean_response ctx)
+          | Some x when x.ToLower().Equals("keep-alive") ->
+            log_req_end 0UL 0UL ctx // TODO: statistics support in server
+            return! loop (count + 1UL) (clean_response ctx)
           | Some _ ->
             free "Suave.Web.http_loop.loop (case Some _)" connection
-            verbose "'Connection: close', exiting"
+            log_req_end 0UL 0UL ctx
             return ()
           | None ->
             if ctx.request.http_version.Equals("HTTP/1.1") then
-              verbose "'Connection: keep-alive' recurse (!)"
-              return! loop (clean_response ctx)
+              log_req_end 0UL 0UL ctx
+              return! loop (count + 1UL) (clean_response ctx)
             else
               free "Suave.Web.http_loop.loop (case None, else branch)" connection
-              verbose "'Connection: close', exiting"
+              log_req_end 0UL 0UL ctx
               return ()
-        | None -> return ()
+        | None ->
+          log_req_end 0UL 0UL ctx
+          return ()
+
+      | Choice2Of2 error ->
+        let! _ = operate (WebPart (RequestErrors.BAD_REQUEST error)) ctx
+        return ()
     }
-    loop ctx_outer
+
+    loop 1UL ctx_outer
 
   /// The request loop initialises a request with a processor to handle the
   /// incoming stream and possibly pass the request to the web parts, a protocol,

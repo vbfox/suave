@@ -11,7 +11,7 @@ module IPAddress =
     x.AddressFamily = Sockets.AddressFamily.InterNetworkV6
 
   let to_string (x : IPAddress) =
-    if is_ipv6 x then String.Concat [| "["; x.ToString(); "]:" |]
+    if is_ipv6 x then String.Concat [| "["; x.ToString(); "]" |]
     else x.ToString()
 
 type SocketBinding =
@@ -20,7 +20,7 @@ type SocketBinding =
   member x.end_point =
     new IPEndPoint(x.ip, int x.port)
   override x.ToString() =
-    String.Concat [ IPAddress.to_string x.ip; x.port.ToString() ]
+    String.Concat [ IPAddress.to_string x.ip; ":"; x.port.ToString() ]
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module SocketBinding =
