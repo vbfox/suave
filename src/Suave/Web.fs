@@ -537,4 +537,4 @@ let default_config : SuaveConfig =
     mime_types_map   = Http.Writers.default_mime_types_map
     home_folder      = None
     compressed_files_folder = None
-    logger           = Loggers.sane_defaults_for LogLevel.Info }
+    logger           = Http.Logging.defaults_for LogLevel.Info }

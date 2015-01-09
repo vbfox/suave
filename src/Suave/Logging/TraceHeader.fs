@@ -4,6 +4,9 @@ open Suave
 open Suave.Utils
 open Suave.Utils.RandomExtensions
 
+type TraceId = uint64
+type ReqId   = uint64
+
 /// A record that keeps track of what request this is.
 /// In an uint64 there are 18 446 744 073 709 551 616 number
 /// of possible values, so you can be fairly certain a given request
@@ -13,16 +16,25 @@ type TraceHeader =
     /// req_id. If it's the second, then trace_id = req_parent_id
     /// or otherwise third or later then trace_id, req_id and req_parent_id
     /// are all disjunct
-    trace_id      : uint64
+    trace_id      : TraceId
     /// the request id assigned when suave received the http request
     /// In ZipKin/Dapper-speak, this is the span id
-    req_id        : uint64
+    req_id        : ReqId
     /// possibly a parent
     /// In ZipKin/Dapper-speak, this is the span parent id
-    req_parent_id : uint64 option }
+    req_parent_id : ReqId option }
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module TraceHeader =
+  [<Literal>]
+  let ClientSend = "cs"
+  [<Literal>]
+  let ClientRecv = "cr"
+  [<Literal>]
+  let ServerSend = "ss"
+  [<Literal>]
+  let ServerRecv = "sr"
+
   /// The empty trace header has zeroes for trace and request id.
   let empty =
     { trace_id      = 0UL

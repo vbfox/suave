@@ -35,4 +35,4 @@ let read_bytes relative_path =
 
 let default_config =
   { default_config with
-      logger = Loggers.sane_defaults_for LogLevel.Warn }
+      logger = Logging.defaults_for LogLevel.Warn }

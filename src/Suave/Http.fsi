@@ -1078,16 +1078,6 @@ module Http =
     val host : hostname:string -> WebPart
 
     /// <summary><para>
-    /// Formats the HttpRequest as in the default manner
-    /// </para></summary>
-    val log_format : ctx:HttpContext -> string
-
-    /// <summary><para>
-    /// Log the HttpRequest to the given logger.
-    /// </para></summary>
-    val log : Logger -> (HttpContext -> string) -> WebPart
-
-    /// <summary><para>
     /// Strongly typed route matching! Matching the uri can be used with the 'parsers'
     /// characters specified in Sscanf.
     /// </para><para>The supported characters for the formatter:</para><para>
@@ -1533,3 +1523,26 @@ module Http =
     /// <remarks>
     /// </remarks>
     val authenticate_basic : f:(string * string -> bool) -> WebPart
+
+  module Logging =
+
+    open Suave.Logging
+
+    val default_parser : ReqId * LogLine array -> ReqLogData
+
+    val ``NCSA Common format`` : (ReqLogData -> LogLine)
+
+    val request_logger : min_level:LogLevel
+                       -> data_parser:(ReqId * LogLine array -> ReqLogData)
+                       -> data_callback:(ReqLogData -> LogLine)
+                       -> write:(LogLine -> unit)
+                       -> Logger
+
+    /// <summary><para>
+    /// Allows you to inspect and create a LogLine from the current HttpContext,
+    /// which is then logged with the Sauve logger. Of course, you should
+    /// set a path explicitly.
+    /// </para></summary>
+    val annotate : (HttpContext -> LogLine) -> WebPart
+
+    val defaults_for : min_level:LogLevel -> Logger

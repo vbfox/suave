@@ -56,6 +56,7 @@
     <Compile Include="TestUtilities.fs" />
     <Compile Include="Smoke.fs" />
     <Compile Include="Utils.fs" />
+    <Compile Include="SpanCoalescor.fs" />
     <Compile Include="Web.fs" />
     <Compile Include="Proxy.fs" />
     <Compile Include="HttpWriters.fs" />

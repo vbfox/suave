@@ -190,7 +190,8 @@ module internal Impl =
             level         = LogLevel.Info
             ``exception`` = None
             data          = Map.empty
-            ts_utc_ticks  = Globals.now().Ticks }
+            tags          = Set.empty
+            timestamp     = Globals.now() }
 
         while not (token.IsCancellationRequested) do
           try
@@ -227,5 +228,6 @@ let tcp_ip_server (buffer_size        : int,
   listen_socket.Listen MaxBacklog
 
   accepting.AwaitResult (), // accepting connections
-  accept_loop logger accepting binding listen_socket accept_pool
+  accept_loop logger accepting binding
+              listen_socket accept_pool
               (job_runner logger pools serve_client)

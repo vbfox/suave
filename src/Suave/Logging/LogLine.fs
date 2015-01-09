@@ -1,5 +1,7 @@
 ﻿namespace Suave.Logging
 
+open System
+
 open Suave
 
 /// When logging, write a log line like this with the source of your
@@ -17,14 +19,18 @@ type LogLine =
     message       : string
 
     data          : Map<string, obj>
+
     /// an optional exception
     ``exception`` : exn option
+
+    tags          : string Set
+
     /// timestamp when this log line was created
-    ts_utc_ticks  : int64 }
+    timestamp     : DateTimeOffset }
     
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module LogLine =
-  let mk path level trace ex data message =
+  let mk path level trace ex data tags message =
     let now = Globals.now ()
     { message       = message
       level         = level
@@ -32,7 +38,8 @@ module LogLine =
       trace         = trace
       ``exception`` = ex
       data          = data
-      ts_utc_ticks  = now.Ticks }
+      tags          = tags
+      timestamp     = now }
 
   let trace_ =
     (fun x -> x.trace),
@@ -58,6 +65,10 @@ module LogLine =
     (fun x -> x.data),
     fun v (x : LogLine) -> { x with data = v }
 
-  let ts_utc_ticks_ =
-    (fun x -> x.ts_utc_ticks),
-    fun v (x : LogLine) -> { x with ts_utc_ticks = v }
+  let tags_ =
+    (fun x -> x.tags),
+    fun v (x : LogLine) -> { x with data = v }
+
+  let timestamp_ =
+    (fun x -> x.timestamp),
+    fun v (x : LogLine) -> { x with timestamp = v }

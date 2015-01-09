@@ -334,47 +334,6 @@ module Http =
     let TRACE   (x : HttpContext) = ``method`` HttpMethod.TRACE x
     let OPTIONS (x : HttpContext) = ``method`` HttpMethod.OPTIONS x
 
-    /// The default log format for <see cref="log" />.  NCSA Common log format
-    /// 
-    /// 127.0.0.1 user-identifier frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326
-    /// 
-    /// A "-" in a field indicates missing data.
-    /// 
-    /// 127.0.0.1 is the IP address of the client (remote host) which made the request to the server.
-    /// user-identifier is the RFC 1413 identity of the client.
-    /// frank is the userid of the person requesting the document.
-    /// [10/Oct/2000:13:55:36 -0700] is the date, time, and time zone when the server finished processing the request, by default in strftime format %d/%b/%Y:%H:%M:%S %z.
-    /// "GET /apache_pb.gif HTTP/1.0" is the request line from the client. The method GET, /apache_pb.gif the resource requested, and HTTP/1.0 the HTTP protocol.
-    /// 200 is the HTTP status code returned to the client. 2xx is a successful response, 3xx a redirection, 4xx a client error, and 5xx a server error.
-    /// 2326 is the size of the object returned to the client, measured in bytes.
-    let log_format (ctx : HttpContext) =
-      
-      let dash = function | "" | null -> "-" | x -> x
-      let ci = Globalization.CultureInfo("en-US")
-      let process_id = System.Diagnostics.Process.GetCurrentProcess().Id.ToString()
-      sprintf "%O %s %s [%s] \"%s %s %s\" %d %s"
-        ctx.request.ipaddr
-        process_id //TODO: obtain connection owner via Ident protocol
-        (match Map.tryFind "user_name" ctx.user_state with Some x -> x :?> string | None -> "-")
-        (DateTime.UtcNow.ToString("dd/MMM/yyyy:hh:mm:ss %K", ci))
-        (string ctx.request.``method``)
-        ctx.request.url.AbsolutePath
-        ctx.request.http_version
-        (Codes.http_code ctx.response.status)
-        "0"
-
-    let log (logger : Logger) (formatter : HttpContext -> string) (ctx : HttpContext) =
-      logger.Debug <| fun _ ->
-        { trace         = ctx.request.trace
-          message       = formatter ctx
-          level         = LogLevel.Debug
-          path          = "Suave.Http.web-requests"
-          ``exception`` = None
-          data          = Map.empty
-          ts_utc_ticks  = Globals.now().Ticks }
-
-      succeed ctx
-
     open Suave.Sscanf
     open ServerErrors
 
@@ -728,3 +687,90 @@ module Http =
           challenge { ctx with user_state = ctx.user_state.Add("user_name",username) }
       | None ->
         challenge ctx
+
+  module Logging =
+    open System
+    open System.Diagnostics
+    open System.Text
+
+    open Suave.Utils
+    open Suave.Sockets
+    open Suave.Types.Codes
+    open Suave.Logging
+
+    open Suave.Logging.Loggers
+
+    let default_parser (req_id : ReqId, lines : LogLine array) =
+      let line_1 = lines.[0]
+      let line_n = lines.[lines.Length - 1]
+      { trace               = line_1.trace
+        req                 = line_1.data |> Map.find "req" |> unbox
+        body_bytes_sent     = line_n.data |> Map.find "body_bytes_sent" |> unbox
+        bytes_sent          = line_n.data |> Map.find "bytes_sent" |> unbox
+        connection_requests = line_n.data |> Map.find "connection_requests" |> unbox
+        content_length      = line_n.data |> Map.find "content_length" |> unbox
+        server_recv         = line_1.timestamp
+        server_send         = line_n.timestamp
+        status              = line_n.data |> Map.find "status" |> unbox
+        user                = line_n.data |> Map.tryFind "user" |> unbox
+        tenant              = line_n.data |> Map.tryFind "tenant" |> unbox
+      }
+
+    /// http://publib.boulder.ibm.com/tividd/td/ITWSA/ITWSA_info45/en_US/HTML/guide/c-logs.html#common
+    let ``NCSA Common format`` =
+      let dash = function | "" | null -> "-" | x -> x
+      let usa = Globalization.CultureInfo("en-US")
+      let process_id = Process.GetCurrentProcess().Id.ToString()
+      let app (s : string) (sb : StringBuilder) =
+        sb.Append " " |> ignore
+        sb.Append s
+      let to_string (sb : StringBuilder) = sb.ToString()
+
+      fun { trace           = trace
+            req             = req
+            server_send     = ss
+            user            = user
+            status          = sc
+            body_bytes_sent = body_bytes } ->
+        let sb = new StringBuilder()
+        sb.Append (IPAddress.to_string req.ipaddr)
+        |> app process_id
+        |> app (user |> Option.or_default "-")
+        |> app (ss.ToString("dd/MMM/yyyy:hh:mm:ss %K", usa))
+        |> app (string req.``method``)
+        |> app (req.url.AbsolutePath)
+        |> app req.http_version
+        |> app (Codes.http_code sc |> string)
+        |> app (body_bytes |> string)
+        |> to_string
+        |> LogLine.mk "Suave" LogLevel.Debug
+                      TraceHeader.empty
+                      None Map.empty Set.empty
+
+    let ``JSON output callback`` (data : ReqLogData) =
+
+      failwithf "TODO"
+
+    let request_logger min_level
+                       (data_parser   : _ -> _)
+                       (data_callback : ReqLogData -> LogLine)
+                       (write         : _ -> unit) =
+      let scl = ReqCoalescor.mk min_level (data_parser >> data_callback >> write)
+      { new Logger with
+          member x.Verbose f_line = scl.Verbose f_line
+          member x.Debug f_line = scl.Debug f_line
+          member x.Log line = scl.Log line }
+
+    let annotate (factory : HttpContext -> LogLine) : WebPart =
+      fun ctx ->
+        let line = factory ctx
+        line |> Logger.log ctx.runtime.logger
+        succeed ctx
+
+    let defaults_for level =
+      let console = ConsoleLogger level :> Logger
+      CombiningLogger
+        [ request_logger level default_parser ``NCSA Common format`` console.Log
+          console
+          OutputWindowLogger(level) ]
+      :> Logger

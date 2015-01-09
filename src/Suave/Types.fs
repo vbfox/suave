@@ -668,12 +668,12 @@ module HttpRuntime =
   /// defaults instead, from Web.fs, as they contain the logic for printing to
   /// the output stream correctly.
   let empty =
-    { server_key         = Crypto.generate_key ServerKeyLength
+    { server_key         = [||]
       error_handler      = fun _ _ -> fun _ -> async.Return None
       mime_types_map     = fun _ -> None
       home_directory     = "."
       compression_folder = "."
-      logger             = Loggers.sane_defaults_for LogLevel.Debug
+      logger             = Loggers.NoopLogger
       matched_binding    = HttpBinding.defaults }
 
   /// make a new HttpRuntime from the given parameters
@@ -891,3 +891,26 @@ module SuaveConfig =
 /// An exception, raised e.g. if writing to the stream fails, should not leak to
 /// users of this library
 exception InternalFailure of string
+
+type ReqLogData =
+  { trace               : TraceHeader
+    /// The actual request from the client
+    req                 : HttpRequest
+    /// The number of bytes sent to a client, not counting the response header
+    body_bytes_sent     : uint64
+    /// The number of bytes sent to a client
+    bytes_sent          : uint64
+    /// The number of requests made through a connection
+    connection_requests : uint64
+    /// "Content-Length" request header field
+    content_length      : uint64
+    /// The instant that the server started processing the request
+    server_recv         : DateTimeOffset
+    /// The instant that the server finished processing the request
+    server_send         : DateTimeOffset
+    /// The response http status code
+    status              : HttpCode
+    /// The optional user id
+    user                : string option
+    /// The optional tenant id
+    tenant              : string option }

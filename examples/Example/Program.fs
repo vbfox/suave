@@ -18,7 +18,7 @@ open Suave.Utils
 let basic_auth : WebPart =
   Authentication.authenticate_basic ( fun (user_name,password) -> user_name.Equals("foo") && password.Equals("bar"))
 
-let logger = Loggers.ConsoleWindowLogger LogLevel.Verbose
+let logger = Loggers.ConsoleLogger LogLevel.Verbose
 
 let myapp : WebPart =
   choose [
@@ -35,7 +35,6 @@ let myapp : WebPart =
 // typed routes
 let testapp : WebPart =
   choose [
-    log logger log_format >>= never
     url_scan "/add/%d/%d"   (fun (a,b) -> OK((a + b).ToString()))
     url_scan "/minus/%d/%d" (fun (a,b) -> OK((a - b).ToString()))
     url_scan "/divide/%d/%d" (fun (a,b) -> OK((a / b).ToString()))
@@ -103,7 +102,7 @@ let app =
       >>= set_header "X-Doge-Location" "http://www.elregalista.com/wp-content/uploads/2014/02/46263312.jpg"
       >>= OK "Doooooge"
     RequestErrors.NOT_FOUND "Found no handlers"
-    ] >>= log logger log_format
+    ]
 
 [<EntryPoint>]
 let main argv =
