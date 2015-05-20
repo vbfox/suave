@@ -86,7 +86,7 @@ let parsingMultipart2 =
             path "/filenames"
               >>= Writers.setMimeType "application/json"
               >>= warbler (fun ctx ->
-                  printfn "inside suave"
+                  //printfn "inside suave"
                   ctx.request.files
                   |> List.map (fun f -> "\"" + f.fileName + "\"")
                   |> String.concat ","

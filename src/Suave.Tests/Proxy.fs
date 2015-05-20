@@ -48,6 +48,12 @@ let proxy =
         Assert.Equal("target's WebPart should return its value", str,
           proxy toTarget |> req HttpMethod.GET "/" None)
 
+    testCase "passed string with funky chars" <| fun _ ->
+      let funkyString = "xD !m"
+      runInContext (runTarget (Successful.OK funkyString)) disposeContext <| fun _ ->
+        Assert.Equal("target's WebPart should return its value", funkyString,
+          proxy toTarget |> req HttpMethod.GET "/" None)
+
     testCase "GET /redirect returns 'redirect'" <| fun _ ->
       runInContext (runTarget (path "/secret" >>= redirect "https://sts.example.se")) disposeContext <| fun _ ->
         let headers, stat =
