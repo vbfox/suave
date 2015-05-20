@@ -380,9 +380,10 @@ module internal ParsingAndControl =
   /// Process the request, reading as it goes from the incoming 'stream', yielding a HttpRequest
   /// when done
   let processRequest (ctx : HttpContext) = socket {
-
     let runtime = ctx.runtime
     let! firstLine, connection' = readLine ctx.connection
+    Log.verbose ctx.runtime.logger "Suave.Web.processRequest" ctx.request.trace
+                (sprintf "firstLine: %s" firstLine)
 
     let rawMethod, path, rawQuery, httpVersion = parseUrl firstLine
     let meth = HttpMethod.parse rawMethod
