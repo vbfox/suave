@@ -683,3 +683,74 @@ let defaultConfig =
     homeFolder            = None
     compressedFilesFolder = None
     logger                = Loggers.saneDefaultsFor LogLevel.Info }
+
+/// PoC
+module private IIS =
+
+  open System
+  open System.Web
+  open System.Threading
+
+  //[<assembly: WebActivator.PreApplicationStartMethod(typeof<Activator>, "PreStart")>]
+
+  let private HelloWorld : WebPart = Successful.OK "HelloWorld from Suave.IO"  >>= Writers.setMimeType "text/plain"
+
+  let private server : (SuaveConfig * CancellationTokenSource) option ref = ref None
+
+  [<CompiledName "ConfigureApp">]
+  let configureApp a =
+    // dispose any old server
+    !server |> Option.iter (fun (conf, cts) ->
+      cts.Dispose()
+      server := None)
+
+    // new cts
+    let cts = new CancellationTokenSource() // don't dispose with use
+    let config = { defaultConfig with cancellationToken = cts.Token }
+    server := Some (config, cts)
+
+    // start new server
+    let canServe, shutdown = startWebServerAsync config HelloWorld
+    canServe |> Async.RunSynchronously |> ignore
+
+  // NS: Suave.App_Start
+  type Activator () =
+    static member PreStart() =
+      configureApp HelloWorld
+
+  let handler () : IHttpAsyncHandler =
+    { new IHttpAsyncHandler with
+        member x.IsReusable = true
+        member x.BeginProcessRequest (context, asyncCallback, extraData) =
+          // TODO: call into OWIN here
+          async.Return () |> Async.StartAsTask :> IAsyncResult
+
+        member x.EndProcessRequest iar =
+          () // task is hot, no need to do anything
+
+        member x.ProcessRequest context =
+          invalidOp "use the async methods instead"
+        }
+
+  type SuaveHttpHandlerFactory() =
+    member x.GetHandler (context, reqType, url, pathTranslated) =
+      handler ()
+
+    member x.ReleaseHandler handler =
+      ()
+
+    member x.IsReusable = true
+
+(* IIS 7
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add verb="*"
+           path="*"
+           name="SuaveHttpHandler"
+           type="Suave.IIS.SuaveHttpHandlerFactory"
+           modules="IsapiModule"/>
+    </handlers>
+  </system.webServer>
+</configuration>
+*)
