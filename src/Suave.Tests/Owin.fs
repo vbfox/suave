@@ -37,7 +37,7 @@ let owinUnit cfg =
 
   let createOwin () =
     let request = { HttpRequest.empty with ``method`` = HttpMethod.PUT }
-    new OwinApp.OwinDictionary("/", { HttpContext.empty with request = request })
+    new Impl.OwinDictionary("/", { HttpContext.empty with request = request })
     :> IDictionary<string, obj>
 
   testList "infrastructure" [
@@ -119,7 +119,7 @@ let owinUnit cfg =
                 headers = [("host","localhost")]
                 rawQuery = "q=a&b=c"
               }
-          new OwinApp.OwinDictionary("", { HttpContext.empty with request = request })
+          new Impl.OwinDictionary("", { HttpContext.empty with request = request })
           :> IDictionary<string, obj>
         let headers : IDictionary<string, string[]> =
           unbox subj.[OwinConstants.requestHeaders]
@@ -224,7 +224,7 @@ let owinUnit cfg =
           stream.WriteAsync(content, 0, content.Length) |> Async.AwaitTask
 
         let composedApp =
-          path "/owin" >=> OwinApp.ofApp "/" misbehaving
+          path "/owin" >=> OwinApp.toWebPart "/" misbehaving
 
         let asserts (result : HttpResponseMessage) =
           eq "Http Status Code" HttpStatusCode.OK result.StatusCode
@@ -267,7 +267,7 @@ let owinEndToEnd cfg =
   let composedApp =
     path "/owin"
       >=> setHeader "X-Custom-Before" "Before OWIN"
-      >=> OwinApp.ofApp "/" owinHelloWorld
+      >=> OwinApp.toWebPart "/" owinHelloWorld
       >=> setHeader "X-Custom-After" "After OWIN"
 
   testList "e2e" [
@@ -299,7 +299,7 @@ let owinEndToEnd cfg =
         async.Return ()
 
       let composedApp =
-        OwinApp.ofApp "/" owinDefaults
+        OwinApp.toWebPart "/" owinDefaults
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.OK result.StatusCode
@@ -312,7 +312,7 @@ let owinEndToEnd cfg =
         Threading.Tasks.Task.FromResult() :> Threading.Tasks.Task)
 
       let composedApp =
-        OwinApp.ofAppFunc "/" owinDefaults
+        OwinAppFunc.toWebPart owinDefaults "/"
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.OK result.StatusCode
@@ -327,7 +327,7 @@ let owinEndToEnd cfg =
         async.Return ()
 
       let composedApp =
-        OwinApp.ofApp "/" noContent
+        OwinApp.toWebPart "/" noContent
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.NoContent result.StatusCode
@@ -344,7 +344,7 @@ let owinEndToEnd cfg =
         async.Return ()
 
       let composedApp =
-        OwinApp.ofApp "/" noContent
+        OwinApp.toWebPart "/" noContent
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.NoContent result.StatusCode
@@ -360,7 +360,7 @@ let owinEndToEnd cfg =
         async.Return ()
 
       let composedApp =
-        OwinApp.ofApp "/" noContent
+        OwinApp.toWebPart "/" noContent
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.NoContent result.StatusCode
@@ -377,13 +377,46 @@ let owinEndToEnd cfg =
         ))
 
       let composedApp =
-        OwinApp.ofMidFunc "/" noContent
+        OwinMidFunc.toWebPart noContent "/"
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.NoContent result.StatusCode
         eq "Reason Phrase set by server" "No Content" result.ReasonPhrase
 
       runWithConfig composedApp |> reqResp HttpMethod.GET "/" "" None None DecompressionMethods.GZip id asserts
+
+    testCase "OWIN middleware calling next(env) fails WebPart" <| fun _ ->
+      // see https://github.com/SuaveIO/suave/issues/410
+
+      let wroteStart = new Suave.Utils.AsyncResultCell<unit>()
+      let wroteEnd = new Suave.Utils.AsyncResultCell<unit>()
+
+      let doNothing : OwinMid =
+        fun next env -> next env
+
+      let printToConsole : OwinMid =
+        fun next env ->
+          async {
+            printfn "start"
+            wroteStart.complete () |> ignore
+            do! next env
+            printfn "end"
+            wroteEnd.complete () |> ignore
+          }
+
+      let composed =
+        choose [
+          OwinMid.toWebPart "/" doNothing
+          GET >=> path "/hello" >=> Successful.OK "hello get!"
+        ]
+
+      let asserts (result : HttpResponseMessage) =
+        eq "Http Status Code" HttpStatusCode.OK result.StatusCode
+        eq "Body" "hello get!" (result.Content.ReadAsStringAsync().Result)
+
+      runWithConfig composedApp
+      |> reqResp HttpMethod.GET "/" "" None None DecompressionMethods.GZip
+                 id asserts
 
     testCase "Composed OWIN security middleware and app" <| fun _ ->
       let noContent = OwinAppFunc(fun env ->
@@ -411,7 +444,7 @@ let owinEndToEnd cfg =
         ))
 
       let composedApp =
-        OwinApp.ofAppFunc "/" (basicAuthMidFunc.Invoke(noContent))
+        OwinAppFunc.toWebPart (basicAuthMidFunc.Invoke(noContent)) "/"
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.NoContent result.StatusCode
@@ -440,7 +473,7 @@ let owinEndToEnd cfg =
         async.Return (Some ctx)
 
       let composedApp =
-        pathRegex "/owin(/.+)*" >=> OwinApp.ofApp "/owin" ok >=> postCondition
+        pathRegex "/owin(/.+)*" >=> OwinApp.toWebPart "/owin" ok >=> postCondition
 
       let asserts (result : HttpResponseMessage) =
         eq "Http Status Code" HttpStatusCode.OK result.StatusCode
@@ -460,7 +493,7 @@ let owinEndToEnd cfg =
         async.Return ()
 
       let composedApp =
-        pathScan "/owin/%s" (fun path -> OwinApp.ofApp "/" (fun env -> async {
+        pathScan "/owin/%s" (fun path -> OwinApp.toWebPart "/" (fun env -> async {
           env.[OwinConstants.requestPathBase] <- box "/owin"
           env.[OwinConstants.requestPath] <- box ("/" + path)
           do! ok env

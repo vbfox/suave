@@ -86,7 +86,7 @@ module OwinSample =
       responseStream.Write(hello, 0, hello.Length)
       async.Return ()
 
-    OwinApp.ofApp "/" owinApp
+    OwinApp.toWebPart "/" owinApp
 
 let app =
   choose [

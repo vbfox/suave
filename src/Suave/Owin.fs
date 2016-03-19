@@ -12,6 +12,7 @@ open System.Threading.Tasks
 open System.Security.Claims
 open System.Security.Principal
 open System.Runtime.InteropServices
+open System.Runtime.CompilerServices
 
 open Suave.Operators
 open Suave.Logging
@@ -212,12 +213,24 @@ module OwinConstants =
 type OwinEnvironment =
   IDictionary<string, obj>
 
+/// OwinEnvironment -> Async<unit>
 type OwinApp =
   OwinEnvironment -> Async<unit>
 
+/// Func<OwinEnvironment, Task>
 type OwinAppFunc =
   Func<OwinEnvironment, Task>
 
+/// (OwinEnvironment -> Async<unit>) -> (OwinEnvironment -> Async<unit>)
+type OwinMid =
+  OwinApp -> OwinApp
+
+/// Func<Func<OwinEnvironment, Task>, Func<OwinEnvironment, Task>>
+///
+/// next:(Env -> Async<unit>) -> app:(Env -> Async<unit>)
+///
+/// Calling `next` with `OwinEnvironment` is the same as letting the WebPart
+/// "fail" and hence moves the request processing mechanics back to Suave.
 type OwinMidFunc =
   Func<Func<OwinEnvironment, Task>, Func<OwinEnvironment, Task>>
 
@@ -227,9 +240,7 @@ type OwinRequest =
   /// (Action<Action<obj>, obj>)
   abstract OnSendingHeaders<'State> : ('State -> unit) -> 'State -> unit
 
-[<RequireQualifiedAccess>]
-[<CompilationRepresentation (CompilationRepresentationFlags.ModuleSuffix)>]
-module OwinApp =
+module internal Impl =
 
   open Suave.Utils.Aether
   open Suave.Utils.Aether.Operators
@@ -603,8 +614,8 @@ module OwinApp =
           responseStream.RealDispose()
           (cts :> IDisposable).Dispose()
 
-  [<CompiledName "OfApp">]
-  let ofApp (requestPathBase : string) (owin : OwinApp) : WebPart =
+  [<CompiledName "ToWebPart">]
+  let toWebPart (requestPathBase : string) (owin : OwinApp) : WebPart =
 
     Filters.pathStarts requestPathBase >=>
     fun (ctx : HttpContext) ->
@@ -656,15 +667,90 @@ module OwinApp =
       }
       |> succeed
 
-  [<CompiledName "OfAppFunc">]
-  let ofAppFunc requestPathBase (owin : OwinAppFunc) =
-    ofApp requestPathBase
-          (fun e -> Async.AwaitTask ((owin.Invoke e).ContinueWith<_>(fun x -> ())))
+/// Module for dealing with OWIN app functions in a F#-type system.
+[<RequireQualifiedAccess>]
+[<CompilationRepresentation (CompilationRepresentationFlags.ModuleSuffix)>]
+module OwinApp =
 
-  [<CompiledName "OfMidFunc">]
-  let ofMidFunc requestPathBase (owin : OwinMidFunc) =
-    ofAppFunc requestPathBase
-              (owin.Invoke(fun _ -> new Task(fun x -> ())))
+  [<CompiledName "OfFunc">]
+  let ofFunc (fa : OwinAppFunc) : OwinApp =
+    fun env ->
+      Async.AwaitTask (fa.Invoke env)
+
+  [<CompiledName "ToFunc">]
+  let toFunc (fa : OwinApp) : OwinAppFunc =
+    let wrapper =
+      fun env ->
+        let tcs = new TaskCompletionSource<unit>()
+        Async.StartWithContinuations(
+          fa env,
+          tcs.SetResult,
+          tcs.SetException,
+          // TO CONSIDER – we're not using exns as control flow:
+          ignore >> tcs.SetCanceled)
+        tcs.Task :> Task
+
+    OwinAppFunc(wrapper)
+
+  [<CompiledName "ToWebPart">]
+  let toWebPart requestPathBase fa =
+    Impl.toWebPart requestPathBase fa
+
+/// Module for dealing with OWIN in a C#-type system or for composing external
+/// OWIN applications into Suave web parts
+[<RequireQualifiedAccess>]
+[<CompilationRepresentation (CompilationRepresentationFlags.ModuleSuffix)>]
+module OwinAppFunc =
+
+  [<Extension>]
+  [<CompiledName "OfAsync">]
+  let ofAsync (fa : OwinApp) : OwinAppFunc =
+    OwinApp.toFunc fa
+
+  [<Extension>]
+  [<CompiledName "ToAsync">]
+  let toAsync (ofa : OwinAppFunc) : OwinApp =
+    OwinApp.ofFunc ofa
+
+  /// Note the reordered arguments
+  [<Extension>]
+  [<CompiledName "ToWebPart">]
+  let toWebPart (owin : OwinAppFunc) requestPathBase : WebPart =
+    Impl.toWebPart requestPathBase (toAsync owin)
+
+[<RequireQualifiedAccess>]
+[<CompilationRepresentation (CompilationRepresentationFlags.ModuleSuffix)>]
+module OwinMid =
+
+  [<CompiledName "ToFunc">]
+  let toFunc (fna : OwinMid) : OwinMidFunc =
+    let wrapper =
+      fun (next : OwinAppFunc) ->
+        OwinAppFunc.ofAsync (fna (OwinApp.ofFunc next))
+
+    OwinMidFunc(wrapper)
+
+  [<CompiledName "ToWebPart">]
+  let toWebPart requestPathBase (midFunc : OwinMid) =
+    // TODO: properly compose mid funcs
+    OwinApp.toWebPart requestPathBase (midFunc (fun env -> async.Return ()))
+
+[<RequireQualifiedAccess>]
+[<CompilationRepresentation (CompilationRepresentationFlags.ModuleSuffix)>]
+module OwinMidFunc =
+
+  [<Extension>]
+  [<CompiledName "OfAsync">]
+  let ofAsync (fna : OwinMid) : OwinMidFunc =
+    OwinMid.toFunc fna
+
+  /// Note the reordered arguments
+  [<Extension>]
+  [<CompiledName "ToWebPart">]
+  let toWebPart (midFunc : OwinMidFunc) requestPathBase =
+    let noop = new Task(fun () -> ())
+    // TODO: properly compose mid funcs
+    OwinAppFunc.toWebPart (midFunc.Invoke(fun env -> noop)) requestPathBase
 
 module OwinServerFactory =
 
@@ -729,7 +815,7 @@ module OwinServerFactory =
           cancellationToken = serverCts.Token }
 
     let started, listening =
-      startWebServerAsync conf (OwinApp.ofAppFunc "/" app)
+      startWebServerAsync conf (OwinAppFunc.toWebPart app "/")
 
     listening |> Async.Start
     let _ = started |> Async.RunSynchronously
