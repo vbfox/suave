@@ -236,6 +236,11 @@ let owinUnit cfg =
     ]
   ]
 
+type OwinMidTestResult =
+  | MidContents of code:HttpCode * contents:string
+  | MidSocketTerm
+  | MidDefaultOwinResponse
+
 [<Tests>]
 let owinEndToEnd cfg =
   let runWithConfig = runWith cfg
@@ -417,6 +422,73 @@ let owinEndToEnd cfg =
       runWithConfig composedApp
       |> reqResp HttpMethod.GET "/" "" None None DecompressionMethods.GZip
                  id asserts
+
+    testList "Composing OwinMid" [
+      let m1 : OwinMid =
+        fun next env -> async {
+          //env.setHeader "My-Header" "Before"
+          do! next env
+          //env.setHeader "My-Other-Header" "After"
+        }
+
+      let m2 : OwinMid  =
+        fun next env -> async {
+          do! next env
+        }
+
+      let m3 : OwinMid =
+        fun  next env -> async.Return ()
+
+      let m4 : OwinMid =
+        fun next env -> async {
+          //env.responseCode <- 403
+          //env.bodyText <- "We decided you are not authorised"
+          return ()
+        }
+
+      let expect msg (om : WebPart) (expected : OwinMidTestResult) =
+        testCase msg (fun () -> ())
+
+      yield expect "m1 is composed before and after `OK 'Contents'`"
+                   (OwinMid.around m1 (Successful.OK "Contents"))
+                   (MidContents (HTTP_200, "Contents"))
+
+      yield expect "m2 simply calls `OK : string -> WebPart`"
+                   (OwinMid.around m2 (Successful.OK "Contents"))
+                   (MidContents (HTTP_200, "Contents"))
+
+      yield expect "socket terminates from no matching web part, since m3 doesn't call next"
+                   (OwinMid.around m3 (Successful.OK "Contents"))
+                   MidSocketTerm
+
+      let fallThrough om =
+        expect "WebPart falls through using <|> to next WebPart"
+               (OwinMid.around om (Successful.OK "Contents") <|> Successful.OK "Alt")
+               (MidContents (HTTP_200, "Contents"))
+
+      yield fallThrough m3
+      yield fallThrough m4
+
+      yield expect "m1 is composed before and after `OK : string -> WebPart`"
+                   (OwinMid.control m1 (Successful.OK "Contents"))
+                   (MidContents (HTTP_200, "Contents"))
+
+      yield expect "m2 simply calls `OK : string -> WebPart`"
+                   (OwinMid.control m2 (Successful.OK "Contents"))
+                   (MidContents (HTTP_200, "Contents"))
+
+      yield expect "default OWIN response"
+                   (OwinMid.control m3 (Successful.OK "Contents"))
+                   (MidContents (HTTP_200, ""))
+
+      yield expect "default OWIN response"
+                   (OwinMid.control m3 (Successful.OK "Contents") <|> Successful.OK "Alt")
+                   MidDefaultOwinResponse
+
+      yield expect "403 \"We decided you are not authorised\""
+                   (OwinMid.control m4 (Successful.OK "Contents"))
+                   (MidContents (HTTP_403, "We decided you are not authorised"))
+    ]
 
     testCase "Composed OWIN security middleware and app" <| fun _ ->
       let noContent = OwinAppFunc(fun env ->

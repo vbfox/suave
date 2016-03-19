@@ -730,6 +730,12 @@ module OwinMid =
 
     OwinMidFunc(wrapper)
 
+  let around om cb : WebPart =
+    Successful.OK "TODO"
+
+  let control om cb : WebPart =
+    Successful.OK "TODO"
+
   [<CompiledName "ToWebPart">]
   let toWebPart requestPathBase (midFunc : OwinMid) =
     // TODO: properly compose mid funcs
