@@ -216,6 +216,16 @@ module Http =
         |> Array.map (fun case -> case.Name, FSharpValue.MakeUnion(case, [||]) :?> HttpCode)
         |> Map.ofArray
 
+  type CookieSameSiteEnforcement =
+    /// Never sent
+    | Strict
+    | Lax
+    with
+      override x.ToString() =
+        match x with
+        | Strict -> "Strict"
+        | Lax -> "Lax"
+
   type HttpCookie =
     { name     : string
       value    : string
@@ -223,7 +233,8 @@ module Http =
       path     : string option
       domain   : string option
       secure   : bool
-      httpOnly : bool }
+      httpOnly : bool
+      sameSite : CookieSameSiteEnforcement option }
 
     static member name_     = (fun x -> x.name),    fun v (x : HttpCookie) -> { x with name = v }
     static member value_    = (fun x -> x.value), fun v (x : HttpCookie) -> { x with value = v }
@@ -232,19 +243,20 @@ module Http =
     static member domain_   = (fun x -> x.domain), fun v x -> { x with domain = v }
     static member secure_   = (fun x -> x.secure), fun v x -> { x with secure = v }
     static member httpOnly_ = (fun x -> x.httpOnly), fun v x -> { x with httpOnly = v }
+    static member sameSite_ = (fun x -> x.sameSite), fun v x -> { x with sameSite = v }
 
   [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
   module HttpCookie =
 
-    let create name value expires path domain secure httpOnly =
+    let create name value expires path domain secure httpOnly sameSite =
       { name      = name
         value     = value
         expires   = expires
         path      = path
         domain    = domain
         secure    = secure
-        httpOnly = httpOnly }
-
+        httpOnly  = httpOnly
+        sameSite  = sameSite }
 
     let createKV name value =
       { name      = name
@@ -253,7 +265,8 @@ module Http =
         path      = Some "/"
         domain    = None
         secure    = false
-        httpOnly = true }
+        httpOnly = true
+        sameSite  = None }
 
     let empty = createKV "" ""
 
@@ -267,6 +280,7 @@ module Http =
       x.expires |> appkv "Expires" (fun (i : DateTimeOffset) -> i.ToString("R"))
       if x.httpOnly then app "HttpOnly"
       if x.secure    then app "Secure"
+      x.sameSite |> appkv "SameSite" (fun x -> x.ToString())
       sb.ToString ()
 
   type MimeType =

@@ -11,6 +11,16 @@ open FsCheck
 
 open Tests.TestUtilities
 
+let private buildSameSite value =
+  { name      = "foo"
+    value     = "bar"
+    expires   = None
+    path      = Some "/"
+    domain    = None
+    secure    = false
+    httpOnly  = false
+    sameSite  = value }
+
 [<Tests>]
 let parseResultCookie (_:SuaveConfig) =
   testList "parse result cookie" [
@@ -24,7 +34,8 @@ let parseResultCookie (_:SuaveConfig) =
           path      = Some "/"
           domain    = None
           secure    = false
-          httpOnly = true }
+          httpOnly  = true
+          sameSite  = None }
       Expect.equal subject expected "cookie should eq"
 
     testCase "parse secure" <| fun _ ->
@@ -35,9 +46,56 @@ let parseResultCookie (_:SuaveConfig) =
           path      = Some "/"
           domain    = None
           secure    = true
-          httpOnly = false }
+          httpOnly  = false
+          sameSite  = None }
       let parsed = Cookie.parseResultCookie (HttpCookie.toHeader cookie)
       Expect.equal parsed cookie "eq"
+
+    testCase "roundtrip SameSite Lax" <| fun _ ->
+      let cookie = buildSameSite (Some Lax)
+      let parsed = Cookie.parseResultCookie (HttpCookie.toHeader cookie)
+      Expect.equal parsed cookie "eq"
+
+    testCase "roundtrip SameSite Strict" <| fun _ ->
+      let cookie = buildSameSite (Some Strict)
+      let parsed = Cookie.parseResultCookie (HttpCookie.toHeader cookie)
+      Expect.equal parsed cookie "eq"
+
+    testCase "parse SameSite unspecified" <| fun _ ->
+      let sample = @"foo=bar; SameSite"
+      let subject = Cookie.parseResultCookie sample
+      let expected = buildSameSite None
+      Expect.equal subject expected "eq"
+
+    testCase "parse SameSite invalid" <| fun _ ->
+      let sample = @"foo=bar; SameSite=No"
+      let subject = Cookie.parseResultCookie sample
+      let expected = buildSameSite None
+      Expect.equal subject expected "eq"
+
+    testCase "parse SameSite Strict" <| fun _ ->
+      let sample = @"foo=bar; SameSite=Strict"
+      let subject = Cookie.parseResultCookie sample
+      let expected = buildSameSite (Some Strict)
+      Expect.equal subject expected "eq"
+
+    testCase "parse SameSite Lax" <| fun _ ->
+      let sample = @"foo=bar; SameSite=Lax"
+      let subject = Cookie.parseResultCookie sample
+      let expected = buildSameSite (Some Lax)
+      Expect.equal subject expected "eq"
+
+    testCase "parse SameSite Strict case insensitive" <| fun _ ->
+      let sample = @"foo=bar; SameSite=stricT"
+      let subject = Cookie.parseResultCookie sample
+      let expected = buildSameSite (Some Strict)
+      Expect.equal subject expected "eq"
+
+    testCase "parse SameSite Lax case insensitive" <| fun _ ->
+      let sample = @"foo=bar; SameSite=laX"
+      let subject = Cookie.parseResultCookie sample
+      let expected = buildSameSite (Some Lax)
+      Expect.equal subject expected "eq"
 
 // FsCheck character gen from RFC slightly painful; let's do that when merging Freya
 //    testPropertyWithConfig fscheck_config "anything generated" <| fun (cookie : HttpCookie) ->
@@ -87,7 +145,8 @@ let setCookie (_ : SuaveConfig) =
           path      = Some "/"
           domain    = None
           secure    = true
-          httpOnly  = false }
+          httpOnly  = false
+          sameSite  = None }
       let ctx = Cookie.setCookie cookie { HttpContext.empty with runtime = { HttpRuntime.empty with logger = log }}
       Expect.isTrue (List.isEmpty log.logs) "Should be no logs generated"
     testCase "set cookie - no warning when = 4k" <| fun _ ->
@@ -99,7 +158,8 @@ let setCookie (_ : SuaveConfig) =
           path      = Some "/"
           domain    = None
           secure    = true
-          httpOnly  = false }
+          httpOnly  = false
+          sameSite  = None }
       let ctx = Cookie.setCookie cookie { HttpContext.empty with runtime = { HttpRuntime.empty with logger = log }}
       Expect.isTrue (List.isEmpty log.logs) "Should be no logs generated"
 
@@ -112,7 +172,8 @@ let setCookie (_ : SuaveConfig) =
           path      = Some "/"
           domain    = None
           secure    = true
-          httpOnly  = false }
+          httpOnly  = false
+          sameSite  = None }
       let ctx =
         let input = { HttpContext.empty with runtime = { HttpRuntime.empty with logger = log }}
         Cookie.setCookie cookie input |> Async.RunSynchronously

@@ -60,6 +60,13 @@ module Http =
 
     static member tryParse : code:int -> Choice<HttpCode, string>
 
+  /// Enforcement mode for the 'SameSite' cookie attribute
+  type CookieSameSiteEnforcement =
+    /// The cookie is never sent on cross-site requests, even for top level navigation
+    | Strict
+    /// The cookie is never sent on cross-site requests, but can be sent on top level navigation
+    | Lax
+
   /// HTTP cookie
   type HttpCookie =
     { name     : string
@@ -71,7 +78,9 @@ module Http =
       /// This cookie is not forwarded over plaintext transports
       secure   : bool
       /// This cookie is not readable from JavaScript
-      httpOnly : bool }
+      httpOnly : bool
+      /// This cookie is not sent on cross-site requests
+      sameSite : CookieSameSiteEnforcement option }
 
     static member name_ : Property<HttpCookie, string>
     static member value_ : Property<HttpCookie, string>
@@ -80,6 +89,7 @@ module Http =
     static member domain_ : Property<HttpCookie, string option>
     static member secure_ : Property<HttpCookie, bool>
     static member httpOnly_ : Property<HttpCookie, bool>
+    static member sameSite_ : Property<HttpCookie, CookieSameSiteEnforcement option>
 
   [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
   module HttpCookie =
@@ -88,6 +98,7 @@ module Http =
     val create : name:string -> value:string -> expires:DateTimeOffset option
                -> path:string option -> domain:string option -> secure:bool
                -> httpOnly:bool
+               -> sameSite:CookieSameSiteEnforcement option
                -> HttpCookie
 
     /// Create a new cookie with the given name, value, and defaults:
@@ -457,7 +468,7 @@ module Http =
                -> mimeTypes:MimeTypesMap -> homeDirectory:string
                -> compressionFolder:string -> logger:Logger
                -> cookieSerialiser:CookieSerialiser
-               -> tlsProvider:TlsProvider -> hideHeader:bool -> maxContentLength:int 
+               -> tlsProvider:TlsProvider -> hideHeader:bool -> maxContentLength:int
                -> binding:HttpBinding
                -> HttpRuntime
 

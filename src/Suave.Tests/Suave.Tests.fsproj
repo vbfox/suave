@@ -19,6 +19,7 @@
     <ConsolePause>false</ConsolePause>
     <Prefer32Bit>false</Prefer32Bit>
     <Optimize>true</Optimize>
+    <StartArguments>--sequenced</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
